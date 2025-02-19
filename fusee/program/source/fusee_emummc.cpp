@@ -78,7 +78,7 @@ namespace ams::nxboot {
                     u32 num_sectors;
                     R_TRY(GetMmcMemoryCapacity(std::addressof(num_sectors), Partition));
 
-                    *out = num_sectors * sdmmc::SectorSize;
+                    *out = static_cast<s64>(num_sectors) * static_cast<s64>(sdmmc::SectorSize);
                     R_SUCCEED();
                 }
 
