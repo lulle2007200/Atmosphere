@@ -134,6 +134,7 @@ namespace ams::nxboot {
             u32 sector = 0;
             const char *path = "";
             const char *n_path = "";
+            const char *device = "";
             {
                 IniSectionList sections;
                 if (ParseIniSafe(sections, "sdmc:/emummc/emummc.ini")) {
@@ -155,6 +156,8 @@ namespace ams::nxboot {
                                 path = entry.value;
                             } else if (std::strcmp(entry.key, "nintendo_path") == 0) {
                                 n_path = entry.value;
+                            } else if (std::strcmp(entry.key, "device") == 0) {
+                                device = entry.value;
                             }
                         }
                     }
@@ -167,8 +170,18 @@ namespace ams::nxboot {
             g_emummc_cfg.emu_dir_path.str[sizeof(g_emummc_cfg.emu_dir_path.str) - 1] = '\x00';
 
             if (enabled) {
-                if (sector > 0) {
-                    g_emummc_cfg.base_cfg.type = secmon::EmummcType_Partition;
+                // TODO: proper ini config
+                if (std::strcmp(device, "no_redirect") == 0 ) {
+                        g_emummc_cfg.base_cfg.type = secmon::EmummcType_Raw_Emmc;
+                } else if (sector > 0) {
+                    if (std::strcmp(device, "sd") == 0 || device[0] == '\x00' ) {
+                        g_emummc_cfg.base_cfg.type = secmon::EmummcType_Partition_Sd;
+                    } else if (std::strcmp(device, "internal") == 0) {
+                        g_emummc_cfg.base_cfg.type = secmon::EmummcType_Partition_Emmc;
+                    } else {
+                        ShowFatalError("Invalid emummc setting!");
+                    }
+
                     g_emummc_cfg.partition_cfg.start_sector = sector;
                 } else if (path[0] != '\x00' && IsDirectoryExist(path)) {
                     g_emummc_cfg.base_cfg.type = secmon::EmummcType_File;

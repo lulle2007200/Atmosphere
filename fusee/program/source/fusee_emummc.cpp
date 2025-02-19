@@ -236,16 +236,34 @@ namespace ams::nxboot {
     void InitializeEmummc(bool emummc_enabled, const secmon::EmummcConfiguration &emummc_cfg) {
         Result result;
         if (emummc_enabled) {
-            /* Get sd card size. */
-            s64 sd_card_size;
-            if (R_FAILED((result = g_sd_card_storage.GetSize(std::addressof(sd_card_size))))) {
-                ShowFatalError("Failed to get sd card size: 0x%08" PRIx32 "!\n", result.GetValue());
-            }
 
-            if (emummc_cfg.base_cfg.type == secmon::EmummcType_Partition) {
+            if (emummc_cfg.base_cfg.type == secmon::EmummcType_Partition_Sd) {
+                /* Get sd card size. */
+                s64 sd_card_size;
+                if (R_FAILED((result = g_sd_card_storage.GetSize(std::addressof(sd_card_size))))) {
+                    ShowFatalError("Failed to get sd card size: 0x%08" PRIx32 "!\n", result.GetValue());
+                }
+
                 const s64 partition_start = emummc_cfg.partition_cfg.start_sector * sdmmc::SectorSize;
                 g_boot0_storage = AllocateObject<fs::SubStorage>(g_sd_card_storage, partition_start, 4_MB);
                 g_user_storage  = AllocateObject<fs::SubStorage>(g_sd_card_storage, partition_start + 8_MB, sd_card_size - (partition_start + 8_MB));
+            } else if (emummc_cfg.base_cfg.type == secmon::EmummcType_Partition_Emmc) {
+                {
+                   const Result result = InitializeMmc();
+                   if (R_FAILED(result)) {
+                       ShowFatalError("Failed to initialize mmc: 0x%08" PRIx32 "\n", result.GetValue());
+                   }
+                }
+
+                /* Get emmc size. */
+                s64 emmc_size;
+                if (R_FAILED((result = g_mmc_user_storage.GetSize(std::addressof(emmc_size))))) {
+                    ShowFatalError("Failed to get emmc size: 0x%08" PRIx32 "!\n", result.GetValue());
+                }
+
+                const s64 partition_start = emummc_cfg.partition_cfg.start_sector * sdmmc::SectorSize;
+                g_boot0_storage = AllocateObject<fs::SubStorage>(g_mmc_user_storage, partition_start, 4_MB);
+                g_user_storage  = AllocateObject<fs::SubStorage>(g_mmc_user_storage, partition_start + 8_MB, emmc_size - (partition_start + 8_MB));
             } else if (emummc_cfg.base_cfg.type == secmon::EmummcType_File) {
                 /* Get the base emummc path. */
                 std::memcpy(g_emummc_path, emummc_cfg.file_cfg.path.str, sizeof(emummc_cfg.file_cfg.path.str));
@@ -288,6 +306,16 @@ namespace ams::nxboot {
                 /* Create partitions. */
                 g_boot0_storage = AllocateObject<fs::FileHandleStorage>(boot0_file);
                 g_user_storage  = AllocateObject<EmummcFileStorage>(user00_file, len + 1);
+            } else if (emummc_cfg.base_cfg.type == secmon::EmummcType_Raw_Emmc) {
+                {
+                    const Result result = InitializeMmc();
+                    if(R_FAILED(result)) {
+                        ShowFatalError("Failed to initialize mmc: 0x%08" PRIx32 "\n", result.GetValue());
+                    }
+                }
+
+                g_boot0_storage = std::addressof(g_mmc_boot0_storage);
+                g_user_storage  = std::addressof(g_mmc_user_storage);
             } else {
                 ShowFatalError("Unknown emummc type %d\n", static_cast<int>(emummc_cfg.base_cfg.type));
             }

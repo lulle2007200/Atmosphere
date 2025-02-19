@@ -19,9 +19,10 @@
 namespace ams::secmon {
 
     enum EmummcType : u32 {
-        EmummcType_None      = 0,
-        EmummcType_Partition = 1,
-        EmummcType_File      = 2,
+        EmummcType_Raw_Emmc       = 0,
+        EmummcType_Partition_Sd   = 1,
+        EmummcType_Partition_Emmc = 2,
+        EmummcType_File           = 3,
     };
 
     enum EmummcMmc {
@@ -51,7 +52,7 @@ namespace ams::secmon {
         }
 
         constexpr bool IsEmummcActive() const {
-            return this->IsValid() && this->type != EmummcType_None;
+            return this->IsValid() && this->type != EmummcType_Raw_Emmc;
         }
     };
     static_assert(util::is_pod<EmummcBaseConfiguration>::value);

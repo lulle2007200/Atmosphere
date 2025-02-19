@@ -447,10 +447,11 @@ namespace ams::secmon::smc {
 
             /* Copy out type-specific data. */
             switch (cfg.base_cfg.type) {
-                case EmummcType_None:
+                case EmummcType_Raw_Emmc:
                     /* No additional configuration needs to be copied. */
                     break;
-                case EmummcType_Partition:
+                case EmummcType_Partition_Sd:
+                case EmummcType_Partition_Emmc:
                     /* Copy the partition config. */
                     static_assert(sizeof(cfg.base_cfg) + sizeof(cfg.partition_cfg) <= InlineOutputSize);
                     std::memcpy(inline_output + sizeof(cfg.base_cfg), std::addressof(cfg.partition_cfg), sizeof(cfg.partition_cfg));
