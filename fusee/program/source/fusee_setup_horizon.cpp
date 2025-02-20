@@ -37,7 +37,8 @@ namespace ams::nxboot {
         constexpr inline const uintptr_t PMC     = secmon::MemoryRegionPhysicalDevicePmc.GetAddress();
         constexpr inline const uintptr_t MC      = secmon::MemoryRegionPhysicalDeviceMemoryController.GetAddress();
 
-        constinit secmon::EmummcConfiguration g_emummc_cfg = {};
+        constinit secmon::EmummcConfiguration   g_emummc_cfg = {};
+        constinit secmon::EmummcSdConfiguration g_emummc_sd_cfg = {};
 
         void DeriveAllKeys(const fuse::SocType soc_type) {
             /* If on erista, run the TSEC keygen firmware. */
@@ -126,15 +127,24 @@ namespace ams::nxboot {
 
         bool ConfigureEmummc() {
             /* Set magic. */
-            g_emummc_cfg.base_cfg.magic = secmon::EmummcBaseConfiguration::Magic;
+            g_emummc_cfg.base_cfg.magic    = secmon::EmummcBaseConfiguration::Magic;
+
+            g_emummc_sd_cfg.base_cfg.magic = secmon::EmummcBaseConfiguration::Magic;
+            // Add EmummcType_Disabled to explicitly indicate no redirection (vs. offset 0 + Partition_Sd / Emummc_Raw)
+            g_emummc_sd_cfg.base_cfg.type  = secmon::EmummcType_Partition_Sd;
 
             /* Parse ini. */
-            bool enabled = false;
-            u32 id = 0;
-            u32 sector = 0;
-            const char *path = "";
+            bool enabled       = false;
+            u32 id             = 0;
+            u32 sector         = 0;
+            bool has_sector    = false;
+            u32 sector_sd      = 0;
+            bool has_sector_sd = false;
+            const char *path   = "";
             const char *n_path = "";
-            const char *device = "";
+            secmon::EmummcType type    = secmon::EmummcType_Max;
+            secmon::EmummcType type_sd = secmon::EmummcType_Max;
+
             {
                 IniSectionList sections;
                 if (ParseIniSafe(sections, "sdmc:/emummc/emummc.ini")) {
@@ -151,13 +161,19 @@ namespace ams::nxboot {
                             } else if (std::strcmp(entry.key, "id") == 0) {
                                 id = ParseHexInteger(entry.value);
                             } else if (std::strcmp(entry.key, "sector") == 0) {
+                                has_sector = true;
                                 sector = ParseHexInteger(entry.value);
+                            } else if (std::strcmp(entry.key, "sector_sd") == 0) {
+                                has_sector_sd = true;
+                                sector_sd = ParseHexInteger(entry.value);
                             } else if (std::strcmp(entry.key, "path") == 0) {
                                 path = entry.value;
                             } else if (std::strcmp(entry.key, "nintendo_path") == 0) {
                                 n_path = entry.value;
-                            } else if (std::strcmp(entry.key, "device") == 0) {
-                                device = entry.value;
+                            } else if (std::strcmp(entry.key, "type") == 0) {
+                                type = static_cast<secmon::EmummcType>(ParseHexInteger(entry.value));
+                            } else if (std::strcmp(entry.key, "type_sd") == 0) {
+                                type_sd = static_cast<secmon::EmummcType>(ParseHexInteger(entry.value));
                             }
                         }
                     }
@@ -165,31 +181,76 @@ namespace ams::nxboot {
             }
 
             /* Set values parsed from config. */
-            g_emummc_cfg.base_cfg.id = id;
+            g_emummc_cfg.base_cfg.id    = id;
+            g_emummc_sd_cfg.base_cfg.id = id;
             std::strncpy(g_emummc_cfg.emu_dir_path.str, n_path, sizeof(g_emummc_cfg.emu_dir_path.str));
             g_emummc_cfg.emu_dir_path.str[sizeof(g_emummc_cfg.emu_dir_path.str) - 1] = '\x00';
+            std::strncpy(g_emummc_sd_cfg.emu_dir_path.str, n_path, sizeof(g_emummc_sd_cfg.emu_dir_path.str));
+            g_emummc_sd_cfg.emu_dir_path.str[sizeof(g_emummc_sd_cfg.emu_dir_path.str) - 1] = '\x00';
 
             if (enabled) {
-                // TODO: proper ini config
-                if (std::strcmp(device, "no_redirect") == 0 ) {
-                        g_emummc_cfg.base_cfg.type = secmon::EmummcType_Raw_Emmc;
-                } else if (sector > 0) {
-                    if (std::strcmp(device, "sd") == 0 || device[0] == '\x00' ) {
+                bool has_valid_config = false;
+                if (has_sector) {
+                    // Might want to redirect to sector 0 on sd/emmc gpp -> dont check if sector > 0
+                    if (type == secmon::EmummcType_Max) {
+                        // When sector given, and type not explicitly set, assume raw sd
                         g_emummc_cfg.base_cfg.type = secmon::EmummcType_Partition_Sd;
-                    } else if (std::strcmp(device, "internal") == 0) {
-                        g_emummc_cfg.base_cfg.type = secmon::EmummcType_Partition_Emmc;
+                    } else if (type == secmon::EmummcType_Partition_Emmc || type == secmon::EmummcType_Partition_Emmc) {
+                        g_emummc_cfg.base_cfg.type = type;
                     } else {
                         ShowFatalError("Invalid emummc setting!");
                     }
 
                     g_emummc_cfg.partition_cfg.start_sector = sector;
-                } else if (path[0] != '\x00' && IsDirectoryExist(path)) {
-                    g_emummc_cfg.base_cfg.type = secmon::EmummcType_File;
+
+                    has_valid_config = true;
+                } else if (path[0] != '\x00') {
+                    if(!IsDirectoryExist(path)){
+                        ShowFatalError("Invalid emummc setting!");
+                    }
+
+                    if(type == secmon::EmummcType_File || type == secmon::EmummcType_Max){
+                        g_emummc_cfg.base_cfg.type = secmon::EmummcType_File;
+                    } else {
+                        ShowFatalError("Invalid emummc setting!");
+                    }
 
                     std::strncpy(g_emummc_cfg.file_cfg.path.str, path, sizeof(g_emummc_cfg.file_cfg.path.str));
                     g_emummc_cfg.file_cfg.path.str[sizeof(g_emummc_cfg.file_cfg.path.str) - 1] = '\x00';
+
+                    has_valid_config = true;
                 } else {
-                    ShowFatalError("Invalid emummc setting!\n");
+                    g_emummc_cfg.base_cfg.type = secmon::EmummcType_Raw_Emmc;
+                    g_emummc_cfg.partition_cfg.start_sector = 0;
+                }
+
+                if (has_sector_sd) {
+                    if (type_sd == secmon::EmummcType_Partition_Sd || type_sd == secmon::EmummcType_Partition_Emmc) {
+                        // must explicitly set sd type
+                        g_emummc_sd_cfg.base_cfg.type = type_sd;
+
+                        has_valid_config = true;
+                    } else {
+                        ShowFatalError("Invalid emummc setting!");
+                    }
+
+                    g_emummc_sd_cfg.partition_cfg.start_sector = sector_sd;
+
+                    has_valid_config = true;
+                } else {
+                    g_emummc_sd_cfg.base_cfg.type = secmon::EmummcType_Partition_Sd;
+                    g_emummc_sd_cfg.partition_cfg.start_sector = 0;
+                }
+
+                if(n_path[0] != '\0') {
+                    // no redirection, but we have custom Nintendo path
+                    // ...whyever one might use that
+                    has_valid_config = true;
+                }
+
+                if(!has_valid_config) {
+                    // emummc enabled, but neither sd nor emmc redirected
+                    ShowFatalError("Invalid emummc setting!");
                 }
             }
 
@@ -507,13 +568,15 @@ namespace ams::nxboot {
             storage_ctx.target_firmware = target_firmware;
             storage_ctx.lcd_vendor      = GetDisplayLcdVendor();
             storage_ctx.emummc_cfg      = g_emummc_cfg;
+            storage_ctx.emummc_sd_cfg   = g_emummc_sd_cfg;
             storage_ctx.flags[0]        = secmon::SecureMonitorConfigurationFlag_Default;
             storage_ctx.flags[1]        = secmon::SecureMonitorConfigurationFlag_None;
             storage_ctx.log_port        = uart::Port_ReservedDebug;
             storage_ctx.log_baud_rate   = 115200;
 
             /* Set the fs version. */
-            storage_ctx.emummc_cfg.base_cfg.fs_version = fs_version;
+            storage_ctx.emummc_cfg.base_cfg.fs_version    = fs_version;
+            storage_ctx.emummc_sd_cfg.base_cfg.fs_version = fs_version;
 
             /* Parse fields from exosphere.ini */
             {

@@ -284,8 +284,12 @@ namespace ams::secmon::smc {
                 case ConfigItem::ExosphereEmummcType:
                     /* Get what kind of emummc this unit has active. */
                     /* NOTE: This may return values other than 1 in the future. */
+                    // TODO: Return redirection type instead
                     args.r[1] = (GetEmummcConfiguration().IsEmummcActive() ? 1 : 0);
                     break;
+                // TODO: GetConfig to get sd redirection type?
+                //       For sd redirection type 0 (EmummcType_Emmc_Raw) doesn't indicate disabled,
+                //       Add EmummcType_Disabled to explicitly indicate no redirection?
                 case ConfigItem::ExospherePayloadAddress:
                     /* Gets the physical address of the reboot payload buffer, if one exists. */
                     if (g_payload_address != 0) {
@@ -421,14 +425,12 @@ namespace ams::secmon::smc {
         const uintptr_t user_offset  = user_address % 4_KB;
 
         /* Validate arguments. */
-        /* NOTE: In the future, configuration for non-NAND storage may be implemented. */
-        SMC_R_UNLESS(mmc == EmummcMmc_Nand,                            NotSupported);
+        /* NOTE: In the future, configuration for non-NAND/non-SD storage may be implemented. */
+        SMC_R_UNLESS(mmc == EmummcMmc_Nand || mmc == EmummcMmc_Sd,     NotSupported);
         SMC_R_UNLESS(user_offset + 2 * sizeof(EmummcFilePath) <= 4_KB, InvalidArgument);
 
         /* Get the emummc config. */
-        const auto &cfg = GetEmummcConfiguration();
-        static_assert(sizeof(cfg.file_cfg)     == sizeof(EmummcFilePath));
-        static_assert(sizeof(cfg.emu_dir_path) == sizeof(EmummcFilePath));
+        const auto &cfg = mmc == EmummcMmc_Nand ? GetEmummcConfiguration() : GetEmummcSdConfiguration(); 
 
         /* Clear the output. */
         constexpr size_t InlineOutputSize = sizeof(args) - sizeof(args.r[0]);

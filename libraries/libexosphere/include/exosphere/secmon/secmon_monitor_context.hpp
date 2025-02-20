@@ -45,12 +45,16 @@ namespace ams::secmon {
         u8  log_flags;
         u32 log_baud_rate;
         u32 reserved1[2];
-        EmummcConfiguration emummc_cfg;
+        EmummcConfiguration   emummc_cfg;
+        // TODO: most of emummc_sd_cfg is a duplicate of emummc_cfg
+        //       (fs_version, id, n_path...), emu path never used since
+        //       file based not supported for sd redirection.
+        EmummcSdConfiguration emummc_sd_cfg;
 
         constexpr bool IsValid() const { return this->magic == Magic; }
     };
     static_assert(util::is_pod<SecureMonitorStorageConfiguration>::value);
-    static_assert(sizeof(SecureMonitorStorageConfiguration) == 0x130);
+    static_assert(sizeof(SecureMonitorStorageConfiguration) == 0x240);
 
     struct SecureMonitorConfiguration {
         ams::TargetFirmware target_firmware;

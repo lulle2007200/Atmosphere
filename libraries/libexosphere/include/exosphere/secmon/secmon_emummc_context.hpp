@@ -19,10 +19,12 @@
 namespace ams::secmon {
 
     enum EmummcType : u32 {
+        EmummcType_Min            = 0,
         EmummcType_Raw_Emmc       = 0,
         EmummcType_Partition_Sd   = 1,
         EmummcType_Partition_Emmc = 2,
         EmummcType_File           = 3,
+        EmummcType_Max            = 4,
     };
 
     enum EmummcMmc {
@@ -87,4 +89,14 @@ namespace ams::secmon {
     static_assert(util::is_pod<EmummcConfiguration>::value);
     static_assert(sizeof(EmummcConfiguration) <= 0x200);
 
+    struct EmummcSdConfiguration : public EmummcConfiguration {
+        constexpr bool IsEmummcActive() const {
+            if(IsValid()){
+                if(this->base_cfg.type == EmummcType_Partition_Emmc || this->partition_cfg.start_sector != 0){
+                    return true;
+                }
+            }
+            return false;
+        }
+    };
 }

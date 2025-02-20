@@ -91,7 +91,8 @@ namespace ams::secmon {
             /* If the storage context is valid, we want to copy it to the global context. */
             if (const auto &storage_ctx = *MemoryRegionPhysicalDramMonitorConfiguration.GetPointer<const SecureMonitorStorageConfiguration>(); storage_ctx.IsValid()) {
                 ctx.secmon_cfg.CopyFrom(storage_ctx);
-                ctx.emummc_cfg = storage_ctx.emummc_cfg;
+                ctx.emummc_cfg    = storage_ctx.emummc_cfg;
+                ctx.emummc_sd_cfg = storage_ctx.emummc_sd_cfg;
             } else {
                 /* If we don't have a valid storage context, we can just use the default one. */
                 ctx.secmon_cfg = DefaultSecureMonitorConfiguration;

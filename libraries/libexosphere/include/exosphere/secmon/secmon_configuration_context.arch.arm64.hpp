@@ -30,12 +30,16 @@ namespace ams::secmon {
             EmummcConfiguration emummc_cfg;
             u8 _raw_emummc_config[0x120];
         };
+        union {
+            EmummcSdConfiguration emummc_sd_cfg;
+            u8 _raw_emummc_sd_config[0x120];
+        };
         u8 sealed_device_keys[pkg1::KeyGeneration_Max][se::AesBlockSize];
         u8 sealed_master_keys[pkg1::KeyGeneration_Max][se::AesBlockSize];
         pkg1::BootConfig boot_config;
         u8 rsa_private_exponents[4][se::RsaSize];
         union {
-            u8 _misc_data[0xFC0 - sizeof(_raw_exosphere_config) - sizeof(_raw_emummc_config) - sizeof(sealed_device_keys) - sizeof(sealed_master_keys) - sizeof(boot_config) - sizeof(rsa_private_exponents)];
+            u8 _misc_data[0xFC0 - sizeof(_raw_exosphere_config) - sizeof(_raw_emummc_sd_config) - sizeof(_raw_emummc_config) - sizeof(sealed_device_keys) - sizeof(sealed_master_keys) - sizeof(boot_config) - sizeof(rsa_private_exponents)];
         };
         /* u8 l1_page_table[0x40]; */
     };
@@ -90,6 +94,10 @@ namespace ams::secmon {
 
     ALWAYS_INLINE const EmummcConfiguration &GetEmummcConfiguration() {
         return GetConfigurationContext().emummc_cfg;
+    }
+
+    ALWAYS_INLINE const EmummcSdConfiguration &GetEmummcSdConfiguration() {
+        return GetConfigurationContext().emummc_sd_cfg;
     }
 
     ALWAYS_INLINE const pkg1::BootConfig &GetBootConfig() {
