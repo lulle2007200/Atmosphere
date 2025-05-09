@@ -764,7 +764,7 @@ namespace ams::nxboot {
 
     }
 
-    u32 ConfigureStratosphere(const u8 *nn_package2, ams::TargetFirmware target_firmware, bool emummc_enabled, bool nogc_enabled) {
+    u32 ConfigureStratosphere(const u8 *nn_package2, ams::TargetFirmware target_firmware, bool emummc_driver_enabled, bool nogc_enabled) {
         /* Load KIPs off the SD card. */
         {
             /* Create kip dir path. */
@@ -852,13 +852,13 @@ namespace ams::nxboot {
         /* Get FS version. */
         const auto fs_version = GetFsVersion(fs_meta->kip_hash);
         if (fs_version >= FsVersion_Count) {
-            if (emummc_enabled || nogc_enabled) {
+            if (emummc_driver_enabled || nogc_enabled) {
                 ShowFatalError("Failed to identify FS!\n");
             }
         }
 
         /* If emummc is enabled, we need to decompress fs .text. */
-        if (emummc_enabled) {
+        if (emummc_driver_enabled) {
             fs_meta->patch_segments |= (1 << 0);
         }
 
@@ -876,7 +876,7 @@ namespace ams::nxboot {
         return static_cast<u32>(fs_version);
     }
 
-    void RebuildPackage2(ams::TargetFirmware target_firmware, bool emummc_enabled) {
+    void RebuildPackage2(ams::TargetFirmware target_firmware, bool emummc_driver_enabled) {
         /* Get the external package. */
         const auto &external_package = GetExternalPackage();
 
@@ -909,7 +909,7 @@ namespace ams::nxboot {
         /* Read emummc, if needed. */
         const InitialProcessHeader *emummc;
         s64 emummc_size;
-        if (emummc_enabled) {
+        if (emummc_driver_enabled) {
             emummc = static_cast<const InitialProcessHeader *>(ReadFile(std::addressof(emummc_size), "sdmc:/atmosphere/emummc.kip"));
             if (emummc == nullptr) {
                 emummc      = reinterpret_cast<const InitialProcessHeader *>(external_package.kips + external_package.header.emummc_meta.offset);
@@ -958,7 +958,7 @@ namespace ams::nxboot {
 
             /* If necessary, inject emummc. */
             u32 addl_text_offset = 0;
-            if (dst_kip->program_id == FsProgramId && emummc_enabled) {
+            if (dst_kip->program_id == FsProgramId && emummc_driver_enabled) {
                 /* Get emummc extents. */
                 addl_text_offset = emummc->bss_address + emummc->bss_size;
                 if ((emummc->flags & 7) || !util::IsAligned(addl_text_offset, 0x1000)) {

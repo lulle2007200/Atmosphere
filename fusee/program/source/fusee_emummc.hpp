@@ -20,7 +20,7 @@
 
 namespace ams::nxboot {
 
-    void InitializeEmummc(bool emummc_enabled, const secmon::EmummcConfiguration &emummc_cfg);
+    void InitializeEmummc(bool emummc_enabled, const secmon::EmummcEmmcConfiguration &emummc_cfg);
 
     Result ReadBoot0(s64 offset, void *dst, size_t size);
     Result ReadPackage2(s64 offset, void *dst, size_t size);

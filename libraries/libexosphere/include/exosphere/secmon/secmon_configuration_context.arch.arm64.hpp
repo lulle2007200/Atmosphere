@@ -28,7 +28,7 @@ namespace ams::secmon {
         };
         union {
             EmummcConfiguration emummc_cfg;
-            u8 _raw_emummc_config[0x120];
+            u8 _raw_emummc_config[0x128];
         };
         u8 sealed_device_keys[pkg1::KeyGeneration_Max][se::AesBlockSize];
         u8 sealed_master_keys[pkg1::KeyGeneration_Max][se::AesBlockSize];
@@ -88,8 +88,12 @@ namespace ams::secmon {
         return GetConfigurationContext().secmon_cfg;
     }
 
-    ALWAYS_INLINE const EmummcConfiguration &GetEmummcConfiguration() {
-        return GetConfigurationContext().emummc_cfg;
+    ALWAYS_INLINE const EmummcEmmcConfiguration &GetEmummcEmmcConfiguration() {
+        return GetConfigurationContext().emummc_cfg.emmc_cfg;
+    }
+
+    ALWAYS_INLINE const EmummcSdConfiguration &GetEmummcSdConfiguration() {
+        return GetConfigurationContext().emummc_cfg.sd_cfg;
     }
 
     ALWAYS_INLINE const pkg1::BootConfig &GetBootConfig() {

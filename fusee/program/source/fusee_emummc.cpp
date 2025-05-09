@@ -233,7 +233,7 @@ namespace ams::nxboot {
 
     }
 
-    void InitializeEmummc(bool emummc_enabled, const secmon::EmummcConfiguration &emummc_cfg) {
+    void InitializeEmummc(bool emummc_enabled, const secmon::EmummcEmmcConfiguration &emummc_cfg) {
         Result result;
         if (emummc_enabled) {
             /* Get sd card size. */
@@ -242,34 +242,65 @@ namespace ams::nxboot {
                 ShowFatalError("Failed to get sd card size: 0x%08" PRIx32 "!\n", result.GetValue());
             }
 
-            if (emummc_cfg.base_cfg.type == secmon::EmummcType_Partition) {
-                const s64 partition_start = emummc_cfg.partition_cfg.start_sector * sdmmc::SectorSize;
-                g_boot0_storage = AllocateObject<fs::SubStorage>(g_sd_card_storage, partition_start, 4_MB);
-                g_user_storage  = AllocateObject<fs::SubStorage>(g_sd_card_storage, partition_start + 8_MB, sd_card_size - (partition_start + 8_MB));
-            } else if (emummc_cfg.base_cfg.type == secmon::EmummcType_File) {
-                /* Get the base emummc path. */
-                std::memcpy(g_emummc_path, emummc_cfg.file_cfg.path.str, sizeof(emummc_cfg.file_cfg.path.str));
-
-                /* Get path length. */
-                auto len = std::strlen(g_emummc_path);
-
-                /* Append emmc. */
-                std::memcpy(g_emummc_path + len, "/eMMC", 6);
-                len += 5;
-
-                /* Open boot0. */
-                fs::FileHandle boot0_file;
-                std::memcpy(g_emummc_path + len, "/boot0", 7);
-                if (R_FAILED((result = fs::OpenFile(std::addressof(boot0_file), g_emummc_path, fs::OpenMode_Read)))) {
-                    ShowFatalError("Failed to open emummc boot0 file: 0x%08" PRIx32 "!\n", result.GetValue());
+            if(emummc_cfg.base_cfg.type == secmon::EmummcEmmcType_Partition_Emmc || emummc_cfg.base_cfg.type == secmon::EmummcEmmcType_Partition_Sd) {
+                /* Partition based emummc */
+                if(emummc_cfg.base_cfg.type == secmon::EmummcEmmcType_Partition_Emmc) {
+                    /* When emmc based, init eMMC */
+                    if (R_FAILED((result = InitializeMmc()))) {
+                        ShowFatalError("Failed to initialize mmc: 0x%08" PRIx32 "\n", result.GetValue());
+                    } 
                 }
 
-                /* Open boot1. */
-                g_emummc_path[len + 5] = '1';
+                /* Get SD or eMMC storage */
+                fs::IStorage &storage = emummc_cfg.base_cfg.type == secmon::EmummcEmmcType_Partition_Sd ? static_cast<fs::IStorage&>(g_sd_card_storage) : static_cast<fs::IStorage&>(g_mmc_user_storage);
+
+                /* Get total storage size */
+                s64 storage_size;
+                if (R_FAILED((result = storage.GetSize(std::addressof(storage_size))))) {
+                    ShowFatalError("Failed to get storage size: 0x%08" PRIx32 "!\n", result.GetValue());
+                }
+
+                const s64 partition_start = emummc_cfg.partition_cfg.start_sector * sdmmc::SectorSize;
+                g_boot0_storage = AllocateObject<fs::SubStorage>(storage, partition_start, 4_MB);
+                g_user_storage = AllocateObject<fs::SubStorage>(storage, partition_start + 8_MB, storage_size - (partition_start + 8_MB));
+            } else if (emummc_cfg.base_cfg.type == secmon::EmummcEmmcType_File_Emmc || emummc_cfg.base_cfg.type == secmon::EmummcEmmcType_File_Sd) {
+                /* File based emummc */
+                if(emummc_cfg.base_cfg.type == secmon::EmummcEmmcType_File_Emmc) {
+                    /* When emmc based, init eMMC */
+                    if (R_FAILED((result = InitializeMmc()))) {
+                        ShowFatalError("Failed to initialize mmc: 0x%08" PRIx32 "\n", result.GetValue());
+                    } 
+
+                    if (!fs::MountSys()) {
+                        ShowFatalError("Failed to mount mmc!\n");
+                    }
+                }
+
+                 /* Set drive to read from */
+                if (emummc_cfg.base_cfg.type == secmon::EmummcEmmcType_File_Sd) {
+                    std::strcpy(g_emummc_path, "sdmc:");
+                } else {
+                    std::strcpy(g_emummc_path, "sys:");
+                }
+
+                std::memcpy(g_emummc_path + std::strlen(g_emummc_path), emummc_cfg.file_cfg.path.str, sizeof(emummc_cfg.file_cfg.path.str));
+                std::strcat(g_emummc_path, "/eMMC");
+
+                auto len = std::strlen(g_emummc_path);
+
+                /* Open boot0 file */
+                fs::FileHandle boot0_file;
+                std::strcat(g_emummc_path, "/boot0");
+                if(R_FAILED((result = fs::OpenFile(std::addressof(boot0_file), g_emummc_path, fs::OpenMode_Read)))) {
+                    ShowFatalError("Failed to open emummc boot0 file: 0x%08" PRIx32 " %s!\n", result.GetValue(), g_emummc_path);
+                }
+
+                /* Check if boot1 file exists */
+                std::strcpy(g_emummc_path + len, "/boot1");
                 {
                     fs::DirectoryEntryType entry_type;
                     bool is_archive;
-                    if (R_FAILED((result = fs::GetEntryType(std::addressof(entry_type), std::addressof(is_archive), g_emummc_path)))) {
+                    if (R_FAILED((result = fs::GetEntryType(std::addressof(entry_type), std::addressof(is_archive), g_emummc_path)))){
                         ShowFatalError("Failed to find emummc boot1 file: 0x%08" PRIx32 "!\n", result.GetValue());
                     }
 
@@ -278,16 +309,16 @@ namespace ams::nxboot {
                     }
                 }
 
-                /* Open userdata. */
-                std::memcpy(g_emummc_path + len, "/00", 4);
+                /* Open userdata */
+                std::strcpy(g_emummc_path + len, "/00");
                 fs::FileHandle user00_file;
-                if (R_FAILED((result = fs::OpenFile(std::addressof(user00_file), g_emummc_path, fs::OpenMode_Read)))) {
+                if(R_FAILED((result = fs::OpenFile(std::addressof(user00_file), g_emummc_path, fs::OpenMode_Read)))) {
                     ShowFatalError("Failed to open emummc user %02d file: 0x%08" PRIx32 "!\n", 0, result.GetValue());
                 }
 
-                /* Create partitions. */
+                /* Create partition */
                 g_boot0_storage = AllocateObject<fs::FileHandleStorage>(boot0_file);
-                g_user_storage  = AllocateObject<EmummcFileStorage>(user00_file, len + 1);
+                g_user_storage = AllocateObject<EmummcFileStorage>(user00_file, len + 1);
             } else {
                 ShowFatalError("Unknown emummc type %d\n", static_cast<int>(emummc_cfg.base_cfg.type));
             }
@@ -304,6 +335,7 @@ namespace ams::nxboot {
             g_boot0_storage = std::addressof(g_mmc_boot0_storage);
             g_user_storage  = std::addressof(g_mmc_user_storage);
         }
+
         if (g_boot0_storage == nullptr) {
             ShowFatalError("Failed to initialize BOOT0\n");
         }
