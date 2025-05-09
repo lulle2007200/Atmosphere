@@ -47,12 +47,13 @@ namespace ams::secmon::smc {
         ExosphereHasRcmBugPatch        = 65004,
         ExosphereBlankProdInfo         = 65005,
         ExosphereAllowCalWrites        = 65006,
-        ExosphereEmummcType            = 65007,
+        ExosphereEmummcEmmcType        = 65007,
         ExospherePayloadAddress        = 65008,
         ExosphereLogConfiguration      = 65009,
         ExosphereForceEnableUsb30      = 65010,
         ExosphereSupportedHosVersion   = 65011,
         ExosphereApproximateApiVersion = 65012,
+        ExosphereEmummcSdType          = 65013,
     };
 
     SmcResult SmcGetConfigUser(SmcArguments &args);

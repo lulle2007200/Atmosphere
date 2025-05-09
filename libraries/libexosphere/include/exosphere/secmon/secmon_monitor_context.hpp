@@ -50,7 +50,7 @@ namespace ams::secmon {
         constexpr bool IsValid() const { return this->magic == Magic; }
     };
     static_assert(util::is_pod<SecureMonitorStorageConfiguration>::value);
-    static_assert(sizeof(SecureMonitorStorageConfiguration) == 0x130);
+    static_assert(sizeof(SecureMonitorStorageConfiguration) == 0x148);
 
     struct SecureMonitorConfiguration {
         ams::TargetFirmware target_firmware;

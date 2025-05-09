@@ -279,12 +279,31 @@ namespace ams::secmon::smc {
                     break;
                 case ConfigItem::ExosphereAllowCalWrites:
                     /* Get whether this unit should allow writing to the calibration partition. */
-                    args.r[1] = (GetEmummcConfiguration().IsEmummcActive() || GetSecmonConfiguration().AllowWritingToCalibrationBinarySysmmc());
+                    args.r[1] = (GetEmummcEmmcConfiguration().IsActive() || GetSecmonConfiguration().AllowWritingToCalibrationBinarySysmmc());
                     break;
-                case ConfigItem::ExosphereEmummcType:
-                    /* Get what kind of emummc this unit has active. */
-                    /* NOTE: This may return values other than 1 in the future. */
-                    args.r[1] = (GetEmummcConfiguration().IsEmummcActive() ? 1 : 0);
+                case ConfigItem::ExosphereEmummcEmmcType:
+                    /* Get what kind of eMMC redirection this unit has active. */
+                    /* NOTE: Even when returning 0, the emummc driver may be used if SD is redirected */
+                    {
+                        auto &cfg = GetEmummcEmmcConfiguration();
+                        if(cfg.IsActive()) {
+                            args.r[1] = cfg.base_cfg.type;
+                        }else{
+                            args.r[1] = 0;
+                        }
+                    }
+                    break;
+                case ConfigItem::ExosphereEmummcSdType:
+                    /* Get what kind of SD redirection this unit has active. */
+                    /* NOTE: Even when returning 0, the emummc driver may be used if eMMC is redirected */
+                    {
+                        auto &cfg = GetEmummcSdConfiguration();
+                        if(cfg.IsActive()) {
+                            args.r[1] = cfg.base_cfg.type;
+                        }else{
+                            args.r[1] = 0;
+                        }
+                    }
                     break;
                 case ConfigItem::ExospherePayloadAddress:
                     /* Gets the physical address of the reboot payload buffer, if one exists. */
@@ -421,49 +440,65 @@ namespace ams::secmon::smc {
         const uintptr_t user_offset  = user_address % 4_KB;
 
         /* Validate arguments. */
-        /* NOTE: In the future, configuration for non-NAND storage may be implemented. */
-        SMC_R_UNLESS(mmc == EmummcMmc_Nand,                            NotSupported);
-        SMC_R_UNLESS(user_offset + 2 * sizeof(EmummcFilePath) <= 4_KB, InvalidArgument);
+        /* NOTE: Only eMMC and SD redirection supported. GC redirection may be supported in the future */
+        SMC_R_UNLESS(mmc == EmummcMmc_Nand || mmc == EmummcMmc_Sd,                              NotSupported);
+        SMC_R_UNLESS(mmc != EmummcMmc_Nand || user_offset + 2 * sizeof(EmummcFilePath) <= 4_KB, InvalidArgument);
 
-        /* Get the emummc config. */
-        const auto &cfg = GetEmummcConfiguration();
-        static_assert(sizeof(cfg.file_cfg)     == sizeof(EmummcFilePath));
-        static_assert(sizeof(cfg.emu_dir_path) == sizeof(EmummcFilePath));
-
-        /* Clear the output. */
         constexpr size_t InlineOutputSize = sizeof(args) - sizeof(args.r[0]);
         u8 * const inline_output = static_cast<u8 *>(static_cast<void *>(std::addressof(args.r[1])));
         std::memset(inline_output, 0, InlineOutputSize);
 
-        /* Copy out the configuration. */
-        {
-            /* Map the user output page. */
-            AtmosphereUserPageMapper mapper(user_address);
-            SMC_R_UNLESS(mapper.Map(), InvalidArgument);
+        if(mmc == EmummcMmc_Nand){
+            /* Copy emummc config for eMMC redirection */
 
-            /* Copy the base configuration. */
+            /* Get emummc config for eMMC redirection */
+            const auto &cfg = GetEmummcEmmcConfiguration();
+
             static_assert(sizeof(cfg.base_cfg) <= InlineOutputSize);
             std::memcpy(inline_output, std::addressof(cfg.base_cfg), sizeof(cfg.base_cfg));
 
-            /* Copy out type-specific data. */
-            switch (cfg.base_cfg.type) {
-                case EmummcType_None:
-                    /* No additional configuration needs to be copied. */
+            AtmosphereUserPageMapper mapper(user_address);
+            SMC_R_UNLESS(mapper.Map(), InvalidArgument);
+
+            switch(cfg.base_cfg.type){
+                case EmummcEmmcType_None:
+                    /* Nothing to copy if disabled */
                     break;
-                case EmummcType_Partition:
-                    /* Copy the partition config. */
+                case EmummcEmmcType_Partition_Emmc:
+                case EmummcEmmcType_Partition_Sd:
+                    /* Copy file config, if file based */
                     static_assert(sizeof(cfg.base_cfg) + sizeof(cfg.partition_cfg) <= InlineOutputSize);
                     std::memcpy(inline_output + sizeof(cfg.base_cfg), std::addressof(cfg.partition_cfg), sizeof(cfg.partition_cfg));
                     break;
-                case EmummcType_File:
-                    /* Copy the file config. */
+                case EmummcEmmcType_File_Emmc:
+                case EmummcEmmcType_File_Sd:
+                    /* Copy partition config, if partition based */
                     SMC_R_UNLESS(mapper.CopyToUser(user_address, std::addressof(cfg.file_cfg), sizeof(cfg.file_cfg)), InvalidArgument);
                     break;
                 AMS_UNREACHABLE_DEFAULT_CASE();
             }
 
-            /* Copy the redirection directory path to the user page. */
-            SMC_R_UNLESS(mapper.CopyToUser(user_address + sizeof(EmummcFilePath), std::addressof(cfg.emu_dir_path), sizeof(cfg.emu_dir_path)), InvalidArgument);
+            /* Copy the redirection directory path to the user page */
+            SMC_R_UNLESS(mapper.CopyToUser(user_address + sizeof(cfg.file_cfg), std::addressof(cfg.emu_dir_path), sizeof(cfg.emu_dir_path)), InvalidArgument);
+        }else if(mmc == EmummcMmc_Sd){
+            /* Copy emummc config for SD redirection */
+
+            /* Get emummc config for SD redirection */
+            const auto &cfg = GetEmummcSdConfiguration();
+
+            static_assert(sizeof(cfg.base_cfg) <= InlineOutputSize);
+            std::memcpy(inline_output, std::addressof(cfg.base_cfg), sizeof(cfg.base_cfg));
+
+            switch(cfg.base_cfg.type) {
+                case EmummcSdType_None:
+                    break;
+                case EmummcSdType_Partition_Emmc:
+                    static_assert(sizeof(cfg.base_cfg) + sizeof(cfg.partition_cfg) <= InlineOutputSize);
+                    std::memcpy(inline_output + sizeof(cfg.base_cfg), std::addressof(cfg.partition_cfg), sizeof(cfg.partition_cfg));
+                    break;
+                /* File based and SD partition based (currently) not supported for SD redirection */
+                AMS_UNREACHABLE_DEFAULT_CASE();
+            }
         }
 
         return SmcResult::Success;
