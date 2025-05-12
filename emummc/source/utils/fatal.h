@@ -36,46 +36,45 @@ enum FatalReason
     Fatal_FatfsFileOpen,
     Fatal_FatfsMemExhaustion,
     Fatal_InvalidEnum,
+    Fatal_InvalidPartition,
+    Fatal_PartitionSwitchFail,
+    Fatal_OOB,
     Fatal_Max
 };
 
-#define AMS_FATAL_ERROR_MAX_STACKTRACE 0x20
-#define AMS_FATAL_ERROR_MAX_STACKDUMP 0x100
-
 /* Atmosphere reboot-to-fatal-error. */
-typedef struct
-{
-    uint32_t magic;
-    uint32_t error_desc;
-    uint64_t title_id;
+typedef struct {
+    u32 magic;
+    u32 error_desc;
+    u64 program_id;
     union {
-        uint64_t gprs[32];
-        struct
-        {
-            uint64_t _gprs[29];
-            uint64_t fp;
-            uint64_t lr;
-            uint64_t sp;
+        u64 gprs[32];
+        struct {
+            u64 _gprs[29];
+            u64 fp;
+            u64 lr;
+            u64 sp;
         };
     };
-    uint64_t pc;
-    uint64_t module_base;
-    uint32_t pstate;
-    uint32_t afsr0;
-    uint32_t afsr1;
-    uint32_t esr;
-    uint64_t far;
-    uint64_t report_identifier; /* Normally just system tick. */
-    uint64_t stack_trace_size;
-    uint64_t stack_dump_size;
-    uint64_t stack_trace[AMS_FATAL_ERROR_MAX_STACKTRACE];
-    uint8_t stack_dump[AMS_FATAL_ERROR_MAX_STACKDUMP];
-} atmosphere_fatal_error_ctx;
+    u64 pc;
+    u64 module_base;
+    u32 pstate;
+    u32 afsr0;
+    u32 afsr1;
+    u32 esr;
+    u64 far;
+    u64 report_identifier; /* Normally just system tick. */
+    u64 stack_trace_size;
+    u64 stack_dump_size;
+    u64 stack_trace[0x20];
+    u8  stack_dump[0x100];
+    u8  tls[0x100];
+}atmosphere_fatal_error_ctx;
 
-/* "AFE1" */
-#define ATMOSPHERE_REBOOT_TO_FATAL_MAGIC 0x31454641
-/* "AFE0" */
-#define ATMOSPHERE_REBOOT_TO_FATAL_MAGIC_0 0x30454641
+/* "AFE2" */
+#define ATMOSPHERE_REBOOT_TO_FATAL_MAGIC 0x32454641
+
+#define ATMOSPHERE_IRAM_PAYLOAD_BASE 0x40010000
 
 #define ATMOSPHERE_FATAL_ERROR_ADDR 0x4003E000
 #define ATMOSPHERE_FATAL_ERROR_CONTEXT ((volatile atmosphere_fatal_error_ctx *)(ATMOSPHERE_FATAL_ERROR_ADDR))
