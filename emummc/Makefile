@@ -4,8 +4,6 @@ ifeq ($(strip $(DEVKITPRO)),)
 $(error "Please set DEVKITPRO in your environment. export DEVKITPRO=<path to>/devkitpro")
 endif
 
-include $(DEVKITPRO)/libnx/switch_rules
-
 TARGET		:=	emummc
 BUILD		:=	build
 SOURCES		:=	source/nx source source/utils source/emmc source/soc source/power source/emuMMC source/FS source/libs/fatfs
@@ -13,15 +11,13 @@ DATA		:=	data
 INCLUDES	:=	include
 EXEFS_SRC	:=	exefs_src
 
-
-EMUMMC_INCLUDE_FATAL_PAYLOAD ?= 1
-
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 EMUMMCDIR ?= $(CURDIR)
 else
 EMUMMCDIR ?= $(CURDIR)/../
 endif
 
+include $(DEVKITPRO)/libnx/switch_rules
 
 ARCH	:=	-march=armv8-a -mtune=cortex-a57 -mtp=soft -fPIE
 
@@ -31,15 +27,12 @@ DEFINES := -DINNER_HEAP_SIZE=0x8000
 CFLAGS	:=	-Wall -O2 -ffunction-sections -fdata-sections -Wno-unused-function \
 			$(ARCH) $(DEFINES)
 
-CFLAGS	+=	$(INCLUDE) -D__SWITCH__ -DEMUMMC_HAS_FATAL_PAYLOAD=$(EMUMMC_INCLUDE_FATAL_PAYLOAD)
+CFLAGS	+=	$(INCLUDE) -D__SWITCH__
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++17
 
 ASFLAGS	:=	-g $(ARCH)
 LDFLAGS	=	-specs=$(EMUMMCDIR)/emummc.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
-
-LIBS := -lnx
-LIBDIRS := $(LIBNX)
 
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 
@@ -47,8 +40,7 @@ export OUTPUT	:=	$(CURDIR)/$(TARGET)
 export TOPDIR	:=	$(EMUMMCDIR)
 
 export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
-			        $(foreach dir,$(DATA),$(CURDIR)/$(dir)) \
-			        ../source/fatal/out
+			$(foreach dir,$(DATA),$(CURDIR)/$(dir))
 
 export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 
@@ -56,9 +48,6 @@ CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
-ifeq ($(EMUMMC_INCLUDE_FATAL_PAYLOAD), 1)
-	BINFILES += fatal_handler.bin
-endif
 
 ifeq ($(strip $(CPPFILES)),)
 	export LD	:=	$(CC)
@@ -105,20 +94,11 @@ clean:
 	@rm -fr $(BUILD) $(TARGET).elf $(TARGET).kip
 
 else
-.PHONY:	all fatal_handler
-
-all	:	fatal_handler $(OUTPUT)_unpacked.kip
-
-ifeq ($(EMUMMC_INCLUDE_FATAL_PAYLOAD), 1) 
-fatal_handler:
-	@$(MAKE) --no-print-directory -C $(CURDIR)/../source/fatal
-else
-fatal_handler: ;
-
-endif
+.PHONY:	all
 
 DEPENDS	:=	$(OFILES:.o=.d)
 
+all	:	$(OUTPUT)_unpacked.kip
 
 $(OUTPUT)_unpacked.kip	:	$(OUTPUT).kip
 	@hactool -t kip --uncompressed=$(OUTPUT)_unpacked.kip $(OUTPUT).kip
@@ -129,7 +109,7 @@ $(OUTPUT).elf	:	$(OFILES)
 
 $(OFILES_SRC)	: $(HFILES_BIN)
 
-fatal_handler.bin.o	fatal_handler_bin.h : fatal_handler.bin
+%.bin.o	%_bin.h :	%.bin
 	@echo $(notdir $<)
 	@$(bin2o)
 

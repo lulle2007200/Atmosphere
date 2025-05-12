@@ -21,12 +21,6 @@
 #include "types.h"
 #include "../emuMMC/emummc_ctx.h"
 
-// #define DEBUG_LOG_ARGS(fmt, ...) log_iram(fmt, __VA_ARGS__)
-// #define DEBUG_LOG(fmt) log_iram(fmt)
-
-#define DEBUG_LOG_ARGS(fmt, ...)
-#define DEBUG_LOG(fmt)
-
 intptr_t QueryIoMapping(u64 addr, u64 size);
 #define byte_swap_32(num) (((num >> 24) & 0xff) | ((num << 8) & 0xff0000) | \
 						((num >> 8 )& 0xff00) | ((num << 24) & 0xff000000))
@@ -44,9 +38,11 @@ void usleep(u64 ticks);
 void msleep(u64 milliseconds);
 void exec_cfg(u32 *base, const cfg_op_t *ops, u32 num_ops);
 
-void log_iram(const char* fmt, ...);
-
-extern u8 working_buf[4096];
+static inline void *armGetTls(void) {
+    void *ret;
+    __asm__ __volatile__("MRS %x[data], TPIDRRO_EL0" : [data]"=r"(ret));
+    return ret;
+}
 
 extern volatile emuMMC_ctx_t emuMMC_ctx;
 

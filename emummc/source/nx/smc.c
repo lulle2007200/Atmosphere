@@ -22,7 +22,6 @@ void smcRebootToIramPayload(void)
     SecmonArgs args;
     args.X[0] = 0xC3000401;                /* smcSetConfig */
     args.X[1] = SplConfigItem_NeedsReboot; /* Exosphere reboot */
-    args.X[2] = 0;
     args.X[3] = 2;                         /* Perform reboot to payload at 0x40010000 in IRAM. */
     svcCallSecureMonitor(&args);
 }
@@ -41,19 +40,21 @@ Result smcGetConfig(SplConfigItem config_item, u64 *out_config)
     SecmonArgs args;
     args.X[0] = 0xC3000002;       /* smcGetConfig */
     args.X[1] = (u64)config_item; /* config item */
-    svcCallSecureMonitor(&args);
-    Result rc = 0;
-    if (args.X[0] == 0)
+    Result rc = svcCallSecureMonitor(&args);
+    if (rc == 0)
     {
-        if (out_config)
+        if (args.X[0] == 0)
         {
-            *out_config = args.X[1];
+            if (out_config)
+            {
+                *out_config = args.X[1];
+            }
         }
-    }
-    else
-    {
-        /* SPL result n = SMC result n */
-        rc = (26u | ((u32)args.X[0] << 9u));
+        else
+        {
+            /* SPL result n = SMC result n */
+            rc = (26u | ((u32)args.X[0] << 9u));
+        }
     }
     return rc;
 }
@@ -107,12 +108,14 @@ Result smcCopyToIram(uintptr_t iram_addr, const void *src_addr, u32 size)
     args.X[2] = (u64)iram_addr; /* IRAM address */
     args.X[3] = size;           /* Amount to copy */
     args.X[4] = 1;              /* 1 = Write */
-    svcCallSecureMonitor(&args);
-    Result rc = 0;
-    if (args.X[0] != 0)
+    Result rc = svcCallSecureMonitor(&args);
+    if (rc == 0)
     {
-        /* SPL result n = SMC result n */
-        rc = (26u | ((u32)args.X[0] << 9u));
+        if (args.X[0] != 0)
+        {
+            /* SPL result n = SMC result n */
+            rc = (26u | ((u32)args.X[0] << 9u));
+        }
     }
     return rc;
 }
@@ -125,12 +128,14 @@ Result smcCopyFromIram(void *dst_addr, uintptr_t iram_addr, u32 size)
     args.X[2] = (u64)iram_addr; /* IRAM address */
     args.X[3] = size;           /* Amount to copy */
     args.X[4] = 0;              /* 0 = Read */
-    svcCallSecureMonitor(&args);
-    Result rc = 0;
-    if (args.X[0] != 0)
+    Result rc = svcCallSecureMonitor(&args);
+    if (rc == 0)
     {
-        /* SPL result n = SMC result n */
-        rc = (26u | ((u32)args.X[0] << 9u));
+        if (args.X[0] != 0)
+        {
+            /* SPL result n = SMC result n */
+            rc = (26u | ((u32)args.X[0] << 9u));
+        }
     }
     return rc;
 }
@@ -142,12 +147,14 @@ Result smcReadWriteRegister(u32 phys_addr, u32 value, u32 mask)
     args.X[1] = phys_addr;  /* MMIO address */
     args.X[2] = mask;       /* mask */
     args.X[3] = value;      /* value */
-    svcCallSecureMonitor(&args);
-    Result rc = 0;
-    if (args.X[0] != 0)
+    Result rc = svcCallSecureMonitor(&args);
+    if (rc == 0)
     {
-        /* SPL result n = SMC result n */
-        rc = (26u | ((u32)args.X[0] << 9u));
+        if (args.X[0] != 0)
+        {
+            /* SPL result n = SMC result n */
+            rc = (26u | ((u32)args.X[0] << 9u));
+        }
     }
     return rc;
 }
@@ -158,16 +165,18 @@ Result smcGetEmummcConfig(exo_emummc_mmc_t mmc_id, exo_emummc_config_t *out_cfg,
     args.X[0] = 0xF0000404;     /* smcAmsGetEmunandConfig */
     args.X[1] = mmc_id;
     args.X[2] = (u64)out_paths;  /* out path */
-    svcCallSecureMonitor(&args);
-    Result rc = 0;
-    if (args.X[0] != 0)
-    {
-        /* SPL result n = SMC result n */
-        rc = (26u | ((u32)args.X[0] << 9u));
-    }
+    Result rc = svcCallSecureMonitor(&args);
     if (rc == 0)
     {
-        memcpy(out_cfg, &args.X[1], sizeof(*out_cfg));
+        if (args.X[0] != 0)
+        {
+            /* SPL result n = SMC result n */
+            rc = (26u | ((u32)args.X[0] << 9u));
+        }
+        if (rc == 0)
+        {
+            memcpy(out_cfg, &args.X[1], sizeof(*out_cfg));
+        }
     }
     return rc;
 
@@ -178,16 +187,18 @@ Result smcGenerateRandomBytes(void *dst, u32 size)
     SecmonArgs args;
     args.X[0] = 0xC3000006;     /* smcGenerateRandomBytes */
     args.X[1] = size;
-    svcCallSecureMonitor(&args);
-    Result rc = 0;
-    if (args.X[0] != 0)
-    {
-        /* SPL result n = SMC result n */
-        rc = (26u | ((u32)args.X[0] << 9u));
-    }
+    Result rc = svcCallSecureMonitor(&args);
     if (rc == 0)
     {
-        memcpy(dst, &args.X[1], size);
+        if (args.X[0] != 0)
+        {
+            /* SPL result n = SMC result n */
+            rc = (26u | ((u32)args.X[0] << 9u));
+        }
+        if (rc == 0)
+        {
+            memcpy(dst, &args.X[1], size);
+        }
     }
     return rc;
 }

@@ -20,9 +20,7 @@
 #include <malloc.h>
 #include <stdio.h>
 #include <string.h>
-#include "FS/FS_versions.h"
-#include <switch/kernel/svc.h>
-#include <switch/arm/tls.h>
+#include "nx/svc.h"
 #include "nx/smc.h"
 #include "soc/clock.h"
 #include "soc/i2c.h"
@@ -30,7 +28,6 @@
 #include "emuMMC/emummc_ctx.h"
 #include "FS/FS_offsets.h"
 #include "utils/fatal.h"
-#include "utils/util.h"
 
 // Prototypes
 void __init();
@@ -90,16 +87,16 @@ extern volatile Handle *sdmmc_das_handle;
 
 // Storage
 volatile __attribute__((aligned(0x1000))) emuMMC_ctx_t emuMMC_ctx = {
-    .magic = (u32)-1,
-    .id = (u32)-1,
+    .magic = EMUMMC_STORAGE_MAGIC,
+    .id = 0,
     .fs_ver = FS_VER_MAX,
 
     // SD Default Metadata
-    .SD_Type = EmummcType_None,
+    .SD_Type = emuMMC_SD_Raw,
     .SD_StoragePartitionOffset = 0,
 
     // EMMC Default Metadata
-    .EMMC_Type = EmummcType_None,
+    .EMMC_Type = emuMMC_EMMC,
     .EMMC_StoragePartitionOffset = 0,
 
     // File Default Path
@@ -331,141 +328,47 @@ void write_nops(void)
     }
 }
 
-static void load_emummc_cfg(exo_emummc_mmc_t mmc, exo_emummc_config_t *cfg, exo_emummc_paths_t *paths) {
-    int x = smcGetEmummcConfig(mmc, cfg, paths);
-
-    if(x != 0) {
-        DEBUG_LOG("GetEmummcConfig smc failed\n");
-        fatal_abort(Fatal_GetConfig);
-    }
-}
-
-static bool load_emummc_sd_ctx(void) {
-    exo_emummc_config_t config;
-    __attribute__((aligned(0x1000))) exo_emummc_paths_t paths;
-    // exo_emummc_paths_t paths;
-
-    load_emummc_cfg(EXO_EMUMMC_MMC_SD, &config, &paths);
-
-    if (config.base_cfg.magic == EMUMMC_STORAGE_MAGIC) {
-        emuMMC_ctx.magic                     = config.base_cfg.magic;
-        emuMMC_ctx.SD_Type                   = (enum EmummcType)config.base_cfg.type;
-        emuMMC_ctx.fs_ver                    = (enum FS_VER)config.base_cfg.fs_version;
-
-        if(emuMMC_ctx.SD_Type == EmummcType_Partition_Emmc) {
-            emuMMC_ctx.SD_StoragePartitionOffset = config.partition_cfg.start_sector;
-        } else if (emuMMC_ctx.SD_Type == EmummcType_None) {
-            // SD redirection disabled -> redirect to start of sd
-            emuMMC_ctx.SD_Type                   = EmummcType_Partition_Sd;
-            emuMMC_ctx.SD_StoragePartitionOffset = 0;
-        } else {
-            DEBUG_LOG("Invalid emuSD type\n");
-            fatal_abort(Fatal_GetConfig);
-        }
-
-        return true;
-    } else {
-        // Invalid magic, disable SD redirection
-        // May happen if emuSD not supported
-        emuMMC_ctx.SD_Type                   = EmummcType_Partition_Sd;
-        emuMMC_ctx.SD_StoragePartitionOffset = 0;
-        emuMMC_ctx.fs_ver                    = FS_VER_MAX;
-        emuMMC_ctx.magic                     = (u32)-1;
-
-        return false;
-    }
-}
-
-static bool load_emummc_emmc_ctx(void) {
-     exo_emummc_config_t config;
-    __attribute__((aligned(0x1000))) exo_emummc_paths_t paths;
-
-    load_emummc_cfg(EXO_EMUMMC_MMC_NAND, &config, &paths);
-
-    if (config.base_cfg.magic == EMUMMC_STORAGE_MAGIC) {
-        emuMMC_ctx.magic     = config.base_cfg.magic;
-        emuMMC_ctx.EMMC_Type = (enum EmummcType)config.base_cfg.type;
-        emuMMC_ctx.fs_ver    = (enum FS_VER)config.base_cfg.fs_version;
-        emuMMC_ctx.id        = config.base_cfg.id;
-
-        if (emuMMC_ctx.EMMC_Type == EmummcType_Partition_Sd || emuMMC_ctx.EMMC_Type == EmummcType_Partition_Emmc) {
-            emuMMC_ctx.EMMC_StoragePartitionOffset = config.partition_cfg.start_sector;
-        } else if (emuMMC_ctx.EMMC_Type == EmummcType_File_Sd || emuMMC_ctx.EMMC_Type == EmummcType_File_Emmc) {
-            if (emuMMC_ctx.EMMC_Type == EmummcType_File_Sd) {
-                strcpy((char*)emuMMC_ctx.storagePath, "sdmc:");
-            } else {
-                strcpy((char*)emuMMC_ctx.storagePath, "sys:");
-            }
-
-            memcpy((char*)emuMMC_ctx.storagePath + strlen((char*)emuMMC_ctx.storagePath), paths.storage_path, sizeof(paths.storage_path));
-            emuMMC_ctx.storagePath[sizeof(emuMMC_ctx.storagePath) - 1] = '\x00';
-        } else if (emuMMC_ctx.EMMC_Type == EmummcType_None) {
-            // eMMC redirection disabled -> redirect to eMMC physical partitions, no offset
-            emuMMC_ctx.EMMC_StoragePartitionOffset = 0;
-        } else {
-            DEBUG_LOG("Invalid emuMMC type\n");
-            fatal_abort(Fatal_GetConfig);
-        }
-
-
-        // Set nintendo path
-        if (emuMMC_ctx.EMMC_Type == EmummcType_None) {
-            // If disabled, use default path
-            strcpy(nintendo_path, "Nintendo");
-        } else {
-            // Otherwise copy nintendo path from config
-            memcpy(nintendo_path, paths.nintendo_path, sizeof(nintendo_path) - 1);
-            nintendo_path[sizeof(nintendo_path) - 1] = '\x00';
-            if (strcmp(nintendo_path, "") == 0) {
-                // If not set, use id
-                snprintf(nintendo_path, sizeof(nintendo_path), "emummc/Nintendo_%04x", emuMMC_ctx.id);
-            }
-        }
-
-        return true;
-    } else {
-        // *Should never happen*
-        // Invalid magid, disable redirection
-        // emuMMC_ctx.magic                       = (u32) -1;
-        // emuMMC_ctx.EMMC_Type                   = EmummcType_None;
-        // emuMMC_ctx.fs_ver                      = FS_VER_MAX;
-        // emuMMC_ctx.id                          = (u32) -1;
-        // emuMMC_ctx.EMMC_StoragePartitionOffset = 0;
-        // strcpy(nintendo_path, "Nintendo");
-        // return false;
-
-        DEBUG_LOG("Invalid emuMMC magic\n");
-        fatal_abort(Fatal_GetConfig);
-
-    }
-}
-
 static void load_emummc_ctx(void)
 {
-    u32 fs_ver = (u32) - 1;
-    load_emummc_sd_ctx();
-    fs_ver = emuMMC_ctx.fs_ver;
-    load_emummc_emmc_ctx();
+    exo_emummc_config_t config;
+    static struct
+    {
+        char storage_path[sizeof(emuMMC_ctx.storagePath)];
+        char nintendo_path[sizeof(nintendo_path)];
+    } __attribute__((aligned(0x1000))) paths;
 
-    if(emuMMC_ctx.magic != EMUMMC_STORAGE_MAGIC) {
-        // Neither SD nor eMMC config had valid magic
-        DEBUG_LOG("Invalid magic\n");
+    int x = smcGetEmummcConfig(EXO_EMUMMC_MMC_NAND, &config, &paths);
+    if (x != 0)
+    {
         fatal_abort(Fatal_GetConfig);
     }
 
-    if(fs_ver != (u32) -1 && fs_ver != emuMMC_ctx.fs_ver) {
-        // SD and eMMC configs have different fs versions
-        DEBUG_LOG("fs version mismatch\n");
+    if (config.base_cfg.magic == EMUMMC_STORAGE_MAGIC)
+    {
+        emuMMC_ctx.magic = config.base_cfg.magic;
+        emuMMC_ctx.id = config.base_cfg.id;
+        emuMMC_ctx.EMMC_Type = (enum emuMMC_Type)config.base_cfg.type;
+        emuMMC_ctx.fs_ver = (enum FS_VER)config.base_cfg.fs_version;
+        if (emuMMC_ctx.EMMC_Type == emuMMC_SD_Raw)
+        {
+            emuMMC_ctx.EMMC_StoragePartitionOffset = config.partition_cfg.start_sector;
+        }
+        else if (emuMMC_ctx.EMMC_Type == emuMMC_SD_File)
+        {
+            memcpy((void *)emuMMC_ctx.storagePath, paths.storage_path, sizeof(emuMMC_ctx.storagePath) - 1);
+            emuMMC_ctx.storagePath[sizeof(emuMMC_ctx.storagePath) - 1] = 0;
+        }
+        memcpy(nintendo_path, paths.nintendo_path, sizeof(nintendo_path) - 1);
+        nintendo_path[sizeof(nintendo_path) - 1] = 0;
+        if (strcmp(nintendo_path, "") == 0)
+        {
+            snprintf(nintendo_path, sizeof(nintendo_path), "emummc/Nintendo_%04x", emuMMC_ctx.id);
+        }
+    }
+    else
+    {
         fatal_abort(Fatal_GetConfig);
     }
-
-    DEBUG_LOG("Final config:\n");
-    DEBUG_LOG_ARGS("SD:   en: %d, off: 0x%x\n", 
-                   emuMMC_ctx.SD_Type, emuMMC_ctx.SD_StoragePartitionOffset);
-    DEBUG_LOG_ARGS("EMMC: en: %d, off: 0x%x\n"
-                   "      path: %s\n"
-                   "      npath: %s\n", 
-                   emuMMC_ctx.EMMC_Type, emuMMC_ctx.EMMC_StoragePartitionOffset, emuMMC_ctx.storagePath, nintendo_path);
 }
 
 void setup_nintendo_paths(void)
@@ -530,5 +433,4 @@ void __init()
 
     clock_enable_i2c5();
     i2c_init();
-
 }

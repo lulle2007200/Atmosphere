@@ -7,4 +7,3 @@ build
 *.exe
 *.kip*
 emummc.caps
-*.clangd

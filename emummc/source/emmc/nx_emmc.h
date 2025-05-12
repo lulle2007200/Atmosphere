@@ -20,15 +20,6 @@
 #include "../utils/types.h"
 #include "sdmmc.h"
 
-enum
-{
-	EMMC_INIT_FAIL = 0,
-	EMMC_1BIT_HS52 = 1,
-	EMMC_8BIT_HS52 = 2,
-	EMMC_MMC_HS200 = 3,
-	EMMC_MMC_HS400 = 4,
-};
-
 typedef struct _gpt_entry_t
 {
 	u8 type_guid[0x10];
@@ -70,15 +61,7 @@ typedef struct _emmc_part_t
 	s8 name[37];
 } emmc_part_t;
 
-extern sdmmc_storage_t emmc_storage;
-extern sdmmc_t emmc_sdmmc;
-
 int nx_emmc_part_read(sdmmc_storage_t *storage, emmc_part_t *part, u32 sector_off, u32 num_sectors, void *buf);
 int nx_emmc_part_write(sdmmc_storage_t *storage, emmc_part_t *part, u32 sector_off, u32 num_sectors, void *buf);
-
-int  nx_emmc_init_retry(bool power_cycle);
-bool nx_emmc_initialize(bool power_cycle);
-int  nx_emmc_set_partition(u32 partition);
-void nx_emmc_end();
 
 #endif

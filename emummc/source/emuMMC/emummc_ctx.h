@@ -22,16 +22,19 @@
 #include "../FS/FS_versions.h"
 
 #define EMUMMC_STORAGE_MAGIC  0x30534645 /* EFS0, EmuFS0 */
+#define EMUMMC_MAX_DIR_LENGTH 0x7F
 
-// 0x80 for path from config + 0xf for drive prefix
-#define EMUMMC_MAX_DIR_LENGTH 0x8F
+enum emuMMC_Type
+{
+    // EMMC Device raw
+    emuMMC_EMMC = 0,
 
-enum EmummcType {
-        EmummcType_None           = 0,
-        EmummcType_Partition_Sd   = 1,
-        EmummcType_File_Sd        = 2,
-        EmummcType_Partition_Emmc = 3,
-        EmummcType_File_Emmc      = 4,
+    // SD Device raw
+    emuMMC_SD_Raw,
+    // SD Device File
+    emuMMC_SD_File,
+
+    emuMMC_MAX
 };
 
 typedef struct _emuMMC_ctx_t
@@ -39,15 +42,15 @@ typedef struct _emuMMC_ctx_t
     u32 magic;
     u32 id;
     enum FS_VER fs_ver;
-    enum EmummcType EMMC_Type;
-    enum EmummcType SD_Type;
+    enum emuMMC_Type EMMC_Type;
+    enum emuMMC_Type SD_Type;
 
     /* Partition based */
     u64 EMMC_StoragePartitionOffset;
     u64 SD_StoragePartitionOffset;
 
     /* File-Based */
-    char storagePath[EMUMMC_MAX_DIR_LENGTH + 1];
+    char storagePath[EMUMMC_MAX_DIR_LENGTH+1];
 } emuMMC_ctx_t, *PemuMMC_ctx_t;
 
 #endif /* __EMUMMC_CTX_H__ */
