@@ -30,7 +30,7 @@ namespace ams::nxboot {
             {
                 /* Generate the file path. */
                 char path[0x40];
-                util::TSNPrintf(path, sizeof(path), "sdmc:/atmosphere/fatal_errors/report_%016" PRIx64 ".bin", ctx->report_identifier);
+                util::TSNPrintf(path, sizeof(path), "atmosphere/fatal_errors/report_%016" PRIx64 ".bin", ctx->report_identifier);
 
                 /* Create the file. */
                 R_TRY(fs::CreateFile(path, sizeof(*ctx)));

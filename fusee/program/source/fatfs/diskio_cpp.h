@@ -25,6 +25,9 @@ bool diskio_write_sd_card(size_t sector_index, size_t sector_count, const void *
 bool diskio_read_system(void *dst, size_t size, size_t sector_index, size_t sector_count);
 bool diskio_write_system(size_t sector_index, size_t sector_count, const void *src, size_t size);
 
+bool diskio_read_boot1(void *dst, size_t size, size_t sector_index, size_t sector_count);
+bool diskio_write_boot1(size_t sector_index, size_t sector_count, const void *src, size_t size);
+
 #ifdef __cplusplus
 }
 #endif

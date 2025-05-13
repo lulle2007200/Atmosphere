@@ -769,7 +769,7 @@ namespace ams::nxboot {
         {
             /* Create kip dir path. */
             char kip_path[0x120];
-            std::memcpy(kip_path, "sdmc:/atmosphere/kips", 0x16);
+            std::memcpy(kip_path, "atmosphere/kips", 0x16);
 
             fs::DirectoryHandle kip_dir;
             if (R_SUCCEEDED(fs::OpenDirectory(std::addressof(kip_dir), kip_path))) {
@@ -899,7 +899,7 @@ namespace ams::nxboot {
 
         /* Load mesosphere. */
         s64 meso_size;
-        if (void *sd_meso = ReadFile(std::addressof(meso_size), "sdmc:/atmosphere/mesosphere.bin"); sd_meso != nullptr) {
+        if (void *sd_meso = ReadFile(std::addressof(meso_size), "atmosphere/mesosphere.bin"); sd_meso != nullptr) {
             std::memcpy(payload_data, sd_meso, meso_size);
         } else {
             meso_size = external_package.header.meso_size;
@@ -910,7 +910,7 @@ namespace ams::nxboot {
         const InitialProcessHeader *emummc;
         s64 emummc_size;
         if (emummc_driver_enabled) {
-            emummc = static_cast<const InitialProcessHeader *>(ReadFile(std::addressof(emummc_size), "sdmc:/atmosphere/emummc.kip"));
+            emummc = static_cast<const InitialProcessHeader *>(ReadFile(std::addressof(emummc_size), "atmosphere/emummc.kip"));
             if (emummc == nullptr) {
                 emummc      = reinterpret_cast<const InitialProcessHeader *>(external_package.kips + external_package.header.emummc_meta.offset);
                 emummc_size = external_package.header.emummc_meta.size;

@@ -101,6 +101,16 @@ namespace ams::fs {
     bool MountSys();
     void UnmountSys();
 
+    bool MountBoot1();
+    void UnmountBoot1();
+
+    /* Mount FAT32 FS on BOOT1 at 1MB offset */
+    bool MountBoot1Off();
+    void UnmountBoot1Off();
+
+    Result ChangeDrive(const char *path);
+    Result ChangeDirectory(const char *path);
+
     Result GetEntryType(DirectoryEntryType *out_entry_type, bool *out_archive, const char *path);
 
     Result CreateFile(const char *path, s64 size);

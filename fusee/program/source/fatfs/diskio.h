@@ -25,6 +25,8 @@ typedef enum {
 typedef enum {
     DRIVE_SD,
     DRIVE_SYS,
+    DRIVE_BOOT1,
+    DRIVE_BOOT1_OFF,
 } DDRIVE;
 
 

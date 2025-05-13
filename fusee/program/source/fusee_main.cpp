@@ -14,6 +14,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <exosphere.hpp>
+#include "fusee_boot_storage.hpp"
 #include "fusee_display.hpp"
 #include "sein/fusee_secure_initialize.hpp"
 #include "sdram/fusee_sdram.hpp"
@@ -30,7 +31,7 @@ namespace ams::nxboot {
 
     namespace {
 
-        constexpr const char ExternalPackageFilePath[] = "sdmc:/atmosphere/package3";
+        constexpr const char ExternalPackageFilePath[] = "atmosphere/package3";
 
         constinit fs::FileHandle g_package_file;
 
@@ -81,17 +82,9 @@ namespace ams::nxboot {
         /* Initialize cache. */
         hw::InitializeDataCache();
 
-        /* Initialize SD card. */
-        {
-            Result result = InitializeSdCard();
-            if (R_FAILED(result)) {
-                ShowFatalError("Failed to initialize the SD card: 0x%08" PRIx32 "\n", result.GetValue());
-            }
-        }
-
-        /* Mount SD card. */
-        if (!fs::MountSdCard()) {
-            ShowFatalError("Failed to mount the SD card.");
+        /* Initialize and mount boot storage. */
+        if (R_FAILED(MountBootStorage())) {
+            ShowFatalError("Failed to mount boot storage.");
         }
 
         /* If we have a fatal error, save and display it. */
@@ -135,6 +128,7 @@ namespace ams::nxboot {
         FinalizeDisplay();
 
         /* Finalize sd card. */
+        UnmountBootStorage();
         FinalizeSdCard();
 
         /* Finalize the data cache. */

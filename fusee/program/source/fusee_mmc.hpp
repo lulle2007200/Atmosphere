@@ -19,6 +19,7 @@
 namespace ams::nxboot {
 
     Result InitializeMmc();
+    void FinalizeMmc();
     Result CheckMmcConnection(sdmmc::SpeedMode *out_sm, sdmmc::BusWidth *out_bw);
     Result GetMmcMemoryCapacity(u32 *out_num_sectors, sdmmc::MmcPartition partition);
 

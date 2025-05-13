@@ -39,6 +39,14 @@ namespace ams::nxboot {
 
     }
 
+    void FinalizeMmc() {
+        /* Deactivate MMC. */
+        sdmmc::Deactivate(MmcPort);
+
+        /* Finalize MMC. */
+        sdmmc::Finalize(MmcPort);
+    }
+
     Result InitializeMmc() {
         /* Initialize the mmc. */
         sdmmc::Initialize(MmcPort);

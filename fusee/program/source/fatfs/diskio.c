@@ -15,6 +15,8 @@
 
 #include "diskio_cpp.h"
 
+#define BOOT1_OFFSET_SCT_1MB 0x800
+
 /*-----------------------------------------------------------------------*/
 /* Get Drive Status                                                      */
 /*-----------------------------------------------------------------------*/
@@ -57,6 +59,11 @@ DRESULT disk_read (
             return diskio_read_sd_card(buff, count * 512, sector, count) ? RES_OK : RES_ERROR;
         case DRIVE_SYS:
             return diskio_read_system(buff, count * 512, sector, count) ? RES_OK : RES_ERROR;
+        case DRIVE_BOOT1:
+            return diskio_read_boot1(buff, count * 512, sector, count) ? RES_OK : RES_ERROR;
+        case DRIVE_BOOT1_OFF:
+            return diskio_read_boot1(buff, count * 512, sector + BOOT1_OFFSET_SCT_1MB, count) ? RES_OK : RES_ERROR;
+
         default:
             return RES_PARERR;
     }
@@ -82,6 +89,10 @@ DRESULT disk_write (
             return diskio_write_sd_card(sector, count, buff, count * 512) ? RES_OK : RES_ERROR;
         case DRIVE_SYS:
             return diskio_write_system(sector, count, buff, count * 512) ? RES_OK : RES_ERROR;
+        case DRIVE_BOOT1:
+            return diskio_write_boot1(sector, count, buff, count * 512) ? RES_OK : RES_ERROR;
+        case DRIVE_BOOT1_OFF:
+            return diskio_write_boot1(sector + DRIVE_BOOT1_OFF, count, buff, count * 512) ? RES_OK : RES_ERROR;
         default:
             return RES_PARERR;
     }

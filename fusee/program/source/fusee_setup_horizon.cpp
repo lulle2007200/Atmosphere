@@ -143,7 +143,7 @@ namespace ams::nxboot {
 
             {
                 IniSectionList sections;
-                if (ParseIniSafe(sections, "sdmc:/emummc/emummc.ini")) {
+                if (ParseIniSafe(sections, "emummc/emummc.ini")) {
                     for (const auto &section : sections){
                         /* Skip non-emummc sections */
                         if (std::strcmp(section.name, "emummc")) {
@@ -215,7 +215,7 @@ namespace ams::nxboot {
 
             {
                 IniSectionList sections;
-                if (ParseIniSafe(sections, "sdmc:/emusd/emusd.ini")) {
+                if (ParseIniSafe(sections, "emusd/emusd.ini")) {
                     for (const auto &section : sections){
                         /* Skip non-emummc sections */
                         if (std::strcmp(section.name, "emusd")) {
@@ -431,7 +431,7 @@ namespace ams::nxboot {
                 std::memcpy(warmboot_dst + 0x248, std::addressof(target_firmware), sizeof(target_firmware));
             } else /* if (soc_type == fuse::SocType_Mariko) */ {
                 /* Declare path for mariko warmboot files. */
-                char warmboot_path[0x80] = "sdmc:/warmboot_mariko/wb_xx.bin";
+                char warmboot_path[0x80] = "warmboot_mariko/wb_xx.bin";
 
                 auto UpdateWarmbootPath = [&warmboot_path](u8 fuses) {
                     warmboot_path[0x19] = "0123456789abcdef"[(fuses >> 4) & 0xF];
@@ -477,7 +477,7 @@ namespace ams::nxboot {
                     /* If we should, save the current warmboot firmware. */
                     UpdateWarmbootPath(expected_fuses);
                     if (!IsFileExist(warmboot_path)) {
-                        fs::CreateDirectory("sdmc:/warmboot_mariko");
+                        fs::CreateDirectory("warmboot_mariko");
                         fs::CreateFile(warmboot_path, warmboot_src_size);
 
                         Result result;
@@ -576,7 +576,7 @@ namespace ams::nxboot {
             /* Parse fields from exosphere.ini */
             {
                 IniSectionList sections;
-                if (ParseIniSafe(sections, "sdmc:/exosphere.ini")) {
+                if (ParseIniSafe(sections, "exosphere.ini")) {
                     for (const auto &section : sections) {
                         /* We only care about the [exosphere] section. */
                         if (std::strcmp(section.name, "exosphere")) {
@@ -651,7 +651,7 @@ namespace ams::nxboot {
             /* Parse usb setting from system_settings.ini */
             {
                 IniSectionList sections;
-                if (ParseIniSafe(sections, "sdmc:/atmosphere/config/system_settings.ini")) {
+                if (ParseIniSafe(sections, "atmosphere/config/system_settings.ini")) {
                     for (const auto &section : sections) {
                         /* We only care about the [usb] section. */
                         if (std::strcmp(section.name, "usb")) {
@@ -676,7 +676,7 @@ namespace ams::nxboot {
             {
                 /* Try to use an sd card file, if present. */
                 fs::FileHandle exo_file;
-                if (R_SUCCEEDED(fs::OpenFile(std::addressof(exo_file), "sdmc:/atmosphere/exosphere.bin", fs::OpenMode_Read))) {
+                if (R_SUCCEEDED(fs::OpenFile(std::addressof(exo_file), "atmosphere/exosphere.bin", fs::OpenMode_Read))) {
                     ON_SCOPE_EXIT { fs::CloseFile(exo_file); };
 
                     /* Note that we're using sd_exo. */
@@ -708,7 +708,7 @@ namespace ams::nxboot {
                 {
                     /* Try to use an sd card file, if present. */
                     fs::FileHandle mariko_program_file;
-                    if (R_SUCCEEDED(fs::OpenFile(std::addressof(mariko_program_file), "sdmc:/atmosphere/mariko_fatal.bin", fs::OpenMode_Read))) {
+                    if (R_SUCCEEDED(fs::OpenFile(std::addressof(mariko_program_file), "atmosphere/mariko_fatal.bin", fs::OpenMode_Read))) {
                         ON_SCOPE_EXIT { fs::CloseFile(mariko_program_file); };
 
                         /* Note that we're using sd mariko fatal. */
@@ -754,7 +754,7 @@ namespace ams::nxboot {
             /* First parse from ini. */
             {
                 IniSectionList sections;
-                if (ParseIniSafe(sections, "sdmc:/atmosphere/config/stratosphere.ini")) {
+                if (ParseIniSafe(sections, "atmosphere/config/stratosphere.ini")) {
                     for (const auto &section : sections) {
                         /* We only care about the [stratosphere] section. */
                         if (std::strcmp(section.name, "stratosphere")) {

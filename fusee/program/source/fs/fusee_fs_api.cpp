@@ -26,11 +26,14 @@ namespace ams::fs {
         constexpr size_t MaxFiles = 8 + 64;
         constexpr size_t MaxDirectories = 2;
 
-        constinit bool g_is_sd_mounted  = false;
-        constinit bool g_is_sys_mounted = false;
+        constinit bool g_is_sd_mounted        = false;
+        constinit bool g_is_sys_mounted       = false;
+        constinit bool g_is_boot1_mounted     = false;
+        constinit bool g_is_boot1_off_mounted = false;
 
-        alignas(0x10) constinit FATFS g_sd_fs  = {};
-        alignas(0x10) constinit FATFS g_sys_fs = {};
+        alignas(0x10) constinit FATFS g_sd_fs    = {};
+        alignas(0x10) constinit FATFS g_sys_fs   = {};
+        alignas(0x10) constinit FATFS g_boot1_fs = {};
 
         alignas(0x10) constinit FIL g_files[MaxFiles] = {};
         alignas(0x10) constinit DIR g_dirs[MaxDirectories] = {};
@@ -119,6 +122,32 @@ namespace ams::fs {
 
     }
 
+    bool MountBoot1() {
+        /* Can't mount both */
+        AMS_ASSERT(!g_is_boot1_mounted && !g_is_boot1_off_mounted);
+        g_is_boot1_mounted = f_mount(std::addressof(g_boot1_fs), "boot1:", 1) == FR_OK;
+        return g_is_boot1_mounted;
+    }
+
+    void UnmountBoot1 () {
+        AMS_ASSERT(g_is_boot1_mounted);
+        f_unmount("boot1:");
+        g_is_boot1_mounted = false;
+    }
+
+    bool MountBoot1Off() {
+        /* Can't mount both */
+        AMS_ASSERT(!g_is_boot1_mounted && !g_is_boot1_off_mounted);
+        g_is_boot1_off_mounted = f_mount(std::addressof(g_boot1_fs), "boot1_off:", 1) == FR_OK;
+        return g_is_boot1_off_mounted;
+    }
+
+    void UnmountBoot1Off () {
+        AMS_ASSERT(g_is_boot1_off_mounted);
+        f_unmount("boot1_off:");
+        g_is_boot1_off_mounted = false;
+    }
+
     bool MountSys() {
         AMS_ASSERT(!g_is_sys_mounted);
         g_is_sys_mounted = f_mount(std::addressof(g_sys_fs), "sys:", 1) == FR_OK;
@@ -141,6 +170,16 @@ namespace ams::fs {
         AMS_ASSERT(g_is_sd_mounted);
         f_unmount("sdmc:");
         g_is_sd_mounted = false;
+    }
+
+    Result ChangeDrive(const char *path) {
+        R_TRY(TranslateFatFsError(f_chdrive(path)));
+        R_SUCCEED();
+    }
+
+    Result ChangeDirectory(const char *path) {
+        R_TRY(TranslateFatFsError(f_chdir(path)));
+        R_SUCCEED();
     }
 
     Result GetEntryType(DirectoryEntryType *out_entry_type, bool *out_archive, const char *path) {
