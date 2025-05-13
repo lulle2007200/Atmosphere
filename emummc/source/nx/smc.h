@@ -4,8 +4,7 @@
  * @copyright libnx Authors
  */
 #pragma once
-#include "../utils/types.h"
-#include "svc.h"
+#include <switch/kernel/svc.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -81,6 +80,18 @@ typedef struct {
     };
 } exo_emummc_config_t;
 
+typedef char exo_emummc_path_t[0x80];
+
+typedef struct {
+    union{
+        exo_emummc_path_t paths[2];
+        struct{
+            exo_emummc_path_t storage_path;
+            exo_emummc_path_t nintendo_path;
+        };
+    };
+}exo_emummc_paths_t;
+
 Result smcGetConfig(SplConfigItem config_item, u64 *out_config);
 
 SplHardwareType splGetHardwareType(void);
@@ -88,6 +99,7 @@ SplSocType splGetSocType(void);
 
 void smcRebootToRcm(void);
 void smcRebootToIramPayload(void);
+void smcRebootToFatalError(void);
 void smcPerformShutdown(void);
 
 Result smcCopyToIram(uintptr_t iram_addr, const void *src_addr, u32 size);

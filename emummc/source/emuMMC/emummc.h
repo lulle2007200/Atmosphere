@@ -29,6 +29,7 @@ extern "C" {
 #include <string.h>
 
 #include "../emmc/nx_sd.h"
+#include "../emmc/nx_emmc.h"
 #include "../emmc/sdmmc.h"
 #include "../soc/i2c.h"
 #include "../soc/gpio.h"
@@ -46,10 +47,14 @@ typedef sdmmc_accessor_t *(*_sdmmc_accessor_nand)();
 typedef void (*_lock_mutex)(void *mtx);
 typedef void (*_unlock_mutex)(void *mtx);
 
-bool sdmmc_initialize(void);
-void sdmmc_finalize(void);
+bool sdmmc_initialize_sd(void);
+void sdmmc_finalize_sd(void);
 int sdmmc_nand_get_active_partition_index();
 sdmmc_accessor_t *sdmmc_accessor_get(int mmc_id);
+
+bool sdmmc_initialize_emmc(void);
+void sdmmc_finalize_emmc(void);
+
 
 void mutex_lock_handler(int mmc_id);
 void mutex_unlock_handler(int mmc_id);
@@ -59,6 +64,10 @@ uint64_t sdmmc_wrapper_controller_open(int mmc_id);
 uint64_t sdmmc_wrapper_controller_close(int mmc_id);
 uint64_t sdmmc_wrapper_read(void *buf, uint64_t bufSize, int mmc_id, unsigned int sector, unsigned int num_sectors);
 uint64_t sdmmc_wrapper_write(int mmc_id, unsigned int sector, unsigned int num_sectors, void *buf, uint64_t bufSize);
+
+extern _sdmmc_accessor_sd   sdmmc_accessor_sd;
+extern _sdmmc_accessor_nand sdmmc_accessor_nand;
+extern _sdmmc_accessor_gc   sdmmc_accessor_gc;
 
 typedef struct _file_based_ctxt
 {

@@ -16,19 +16,22 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <stdint.h>
 #include <stdlib.h>
 
 #include "emummc.h"
 #include "emummc_ctx.h"
 #include "../utils/fatal.h"
-#include "../libs/fatfs/diskio.h"
 
-static bool sdmmc_first_init = false;
 static bool storageSDinitialized = false;
+static bool storageEMMCinitialized = false;
+
+static bool sdmmc_first_init_sd = false;
+
 
 // hekate sdmmmc vars
-sdmmc_t sdmmc;
-sdmmc_storage_t storage;
+sdmmc_t emmc_sdmmc;
+sdmmc_storage_t emmc_storage;
 sdmmc_t sd_sdmmc;
 sdmmc_storage_t sd_storage;
 
@@ -53,25 +56,292 @@ volatile Handle *sdmmc_das_handle;
 file_based_ctxt f_emu;
 static bool fat_mounted = false;
 
-static void _sdmmc_ensure_device_attached(void)
+static int _get_device_from_type(enum EmummcType type)
+{
+    switch(type)
+    {
+    case EmummcType_None:
+    case EmummcType_Partition_Emmc:
+    case EmummcType_File_Emmc:
+    // case emuMMC_EMMC_File:
+        return FS_SDMMC_EMMC;
+    case EmummcType_Partition_Sd:
+    case EmummcType_File_Sd:
+        return FS_SDMMC_SD;
+    default:
+        DEBUG_LOG_ARGS("Invalid type. (%d)", type);
+        fatal_abort(Fatal_InvalidEnum);
+    }
+}
+
+static int _get_target_device(int mmc_id)
+{
+    enum EmummcType type;
+    switch(mmc_id)
+    {
+    case FS_SDMMC_EMMC:
+        type = emuMMC_ctx.EMMC_Type;
+        break;
+    case FS_SDMMC_SD:
+        type = emuMMC_ctx.SD_Type;
+        break;
+    case FS_SDMMC_GC:
+        return FS_SDMMC_GC;
+    default:
+        DEBUG_LOG_ARGS("Get target dev: Inv dev (%d)", mmc_id);
+        fatal_abort(Fatal_InvalidEnum);
+    }
+
+    return _get_device_from_type(type);
+}
+
+static sdmmc_storage_t *_get_storage_for_device(int mmc_id)
+{
+    switch(mmc_id)
+    {
+    case FS_SDMMC_EMMC:
+        return &emmc_storage;
+    case FS_SDMMC_SD:
+        return &sd_storage;
+    default:
+        DEBUG_LOG_ARGS("Get storage: Inv dev (%d)", mmc_id);
+        fatal_abort(Fatal_InvalidEnum);
+    }
+}
+
+static void _emmc_set_partition(int partition){
+    if(partition < 0 || partition >= FS_EMMC_PARTITION_INVALID){
+        DEBUG_LOG_ARGS("Set part: Inv part (%d)", partition);
+        fatal_abort(Fatal_InvalidPartition);
+    }
+    if(!nx_emmc_set_partition(partition)){
+        DEBUG_LOG_ARGS("Set part failed (%d)", partition);
+        fatal_abort(Fatal_PartitionSwitchFail);
+    }
+}
+
+// partition = FS_EMMC_PARTITION_INVALID restores to active partition, if necessary
+static void _ensure_partition(int partition){
+    static bool should_restore = false;
+    if(partition == FS_EMMC_PARTITION_INVALID){
+        // Restore partition, if necessary
+        if(should_restore){
+          _emmc_set_partition(*active_partition);
+          should_restore = false;
+        }
+    }else{
+        // If requested partition not already active, change partition
+        if(*active_partition != partition){
+            _emmc_set_partition(partition);
+            should_restore = true;
+        }
+    }
+}
+
+static void _ensure_correct_partition(int target_mmc_id){
+    switch (target_mmc_id) {
+    case FS_SDMMC_EMMC:
+        if(emuMMC_ctx.EMMC_Type == EmummcType_Partition_Emmc ||
+           emuMMC_ctx.EMMC_Type == EmummcType_File_Emmc){
+            // Switch to GPP if file or partition based emummc
+            _ensure_partition(FS_EMMC_PARTITION_GPP);
+        }
+
+        // If EMMC_Type == EmummcType_None, we are not redirecting emmc, don't change partition
+        // If SD partition or file based, we don't  care
+        break;
+    case FS_SDMMC_SD:
+        if(emuMMC_ctx.SD_Type == EmummcType_Partition_Emmc){
+            _ensure_partition(FS_EMMC_PARTITION_GPP);
+        }
+        break;
+    default:
+        DEBUG_LOG_ARGS("Ensure correct part: Inv dev (%d)", target_mmc_id);
+        fatal_abort(Fatal_InvalidEnum);
+    }
+}
+
+static void _restore_partition(){
+    _ensure_partition(FS_EMMC_PARTITION_INVALID);
+}
+
+// ICRY
+void mutex_lock_handler(int mmc_id)
+{
+    int sd_target = _get_target_device(FS_SDMMC_SD);
+    int emmc_target = _get_target_device(FS_SDMMC_EMMC);
+
+    switch(mmc_id)
+    {
+    case FS_SDMMC_EMMC:
+        if(sd_target == FS_SDMMC_SD && emmc_target == FS_SDMMC_SD)
+        {
+            if(custom_driver)
+            {
+                lock_mutex(sd_mutex);
+            }
+            lock_mutex(nand_mutex);
+        }
+        else if(sd_target == FS_SDMMC_SD && emmc_target == FS_SDMMC_EMMC)
+        {
+            if(custom_driver)
+            {
+                lock_mutex(nand_mutex);
+            }
+        }
+        else if(sd_target == FS_SDMMC_EMMC && emmc_target == FS_SDMMC_SD)
+        {
+            if(custom_driver)
+            {
+                lock_mutex(sd_mutex);
+            }
+            lock_mutex(nand_mutex);
+        }
+        else if(sd_target == FS_SDMMC_EMMC && emmc_target == FS_SDMMC_EMMC)
+        {
+            lock_mutex(sd_mutex);
+            if(custom_driver)
+            {
+                lock_mutex(nand_mutex);
+            }
+        }
+        break;
+    case FS_SDMMC_SD:
+        if(sd_target == FS_SDMMC_SD && emmc_target == FS_SDMMC_SD)
+        {
+            if(custom_driver)
+            {
+                lock_mutex(sd_mutex);
+            }
+            lock_mutex(nand_mutex);
+        }
+        else if(sd_target == FS_SDMMC_SD && emmc_target == FS_SDMMC_EMMC)
+        {
+            if(custom_driver)
+            {
+                lock_mutex(sd_mutex);
+            }
+        }
+        else if(sd_target == FS_SDMMC_EMMC && emmc_target == FS_SDMMC_SD)
+        {
+            lock_mutex(sd_mutex);
+            if(custom_driver)
+            {
+                lock_mutex(nand_mutex);
+            }
+        }
+        else if(sd_target == FS_SDMMC_EMMC && emmc_target == FS_SDMMC_EMMC)
+        {
+            lock_mutex(sd_mutex);
+            if(custom_driver)
+            {
+                lock_mutex(nand_mutex);
+            }
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+void mutex_unlock_handler(int mmc_id)
+{
+    int sd_target = _get_target_device(FS_SDMMC_SD);
+    int emmc_target = _get_target_device(FS_SDMMC_EMMC);
+
+    switch(mmc_id)
+    {
+    case FS_SDMMC_EMMC:
+        if(sd_target == FS_SDMMC_SD && emmc_target == FS_SDMMC_SD)
+        {
+            unlock_mutex(nand_mutex);
+            if(custom_driver)
+            {
+                unlock_mutex(sd_mutex);
+            }
+        }
+        else if(sd_target == FS_SDMMC_SD && emmc_target == FS_SDMMC_EMMC)
+        {
+            if(custom_driver)
+            {
+                unlock_mutex(nand_mutex);
+            }
+        }
+        else if(sd_target == FS_SDMMC_EMMC && emmc_target == FS_SDMMC_SD)
+        {
+            unlock_mutex(nand_mutex);
+            if(custom_driver)
+            {
+                unlock_mutex(sd_mutex);
+            }
+        }
+        else if(sd_target == FS_SDMMC_EMMC && emmc_target == FS_SDMMC_EMMC)
+        {
+            if(custom_driver)
+            {
+                unlock_mutex(nand_mutex);
+            }
+            unlock_mutex(sd_mutex);
+        }
+        break;
+    case FS_SDMMC_SD:
+        if(sd_target == FS_SDMMC_SD && emmc_target == FS_SDMMC_SD)
+        {
+            unlock_mutex(nand_mutex);
+            if(custom_driver)
+            {
+                unlock_mutex(sd_mutex);
+            }
+        }
+        else if(sd_target == FS_SDMMC_SD && emmc_target == FS_SDMMC_EMMC)
+        {
+            if(custom_driver)
+            {
+                unlock_mutex(sd_mutex);
+            }
+        }
+        else if(sd_target == FS_SDMMC_EMMC && emmc_target == FS_SDMMC_SD)
+        {
+            if(custom_driver)
+            {
+                unlock_mutex(nand_mutex);
+            }
+            unlock_mutex(sd_mutex);
+        }
+        else if(sd_target == FS_SDMMC_EMMC && emmc_target == FS_SDMMC_EMMC)
+        {
+            if(custom_driver)
+            {
+                unlock_mutex(nand_mutex);
+            }
+            unlock_mutex(sd_mutex);
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+static void _sdmmc_ensure_device_attached(int mmc_id)
 {
     // This ensures that the sd device address space handle is always attached,
     // even if FS hasn't attached it
     static bool did_attach = false;
     if (!did_attach)
     {
-        svcAttachDeviceAddressSpace(DeviceName_SDMMC1A, *sdmmc_das_handle);
+        // DeviceName_SDMMC1A = 19
+        svcAttachDeviceAddressSpace(19, *sdmmc_das_handle);
         did_attach = true;
     }
 }
 
-static void _sdmmc_ensure_initialized(void)
+static void _sdmmc_ensure_initialized_sd(void)
 {
     // First Initial init
-    if (!sdmmc_first_init)
+    if (!sdmmc_first_init_sd)
     {
-        sdmmc_initialize();
-        sdmmc_first_init = true;
+        sdmmc_initialize_sd();
+        sdmmc_first_init_sd = true;
     }
     else
     {
@@ -81,12 +351,17 @@ static void _sdmmc_ensure_initialized(void)
         {
             if (sdmmc_get_sd_power_enabled() == 0)
             {
-                sdmmc_finalize();
-                sdmmc_initialize();
+                sdmmc_finalize_sd();
+                sdmmc_initialize_sd();
                 init_done = true;
             }
         }
     }
+}
+
+static void _sdmmc_ensure_initialized_emmc(void)
+{
+    sdmmc_initialize_emmc();
 }
 
 static void _file_based_update_filename(char *outFilename, unsigned int sd_path_len, unsigned int part_idx)
@@ -96,7 +371,7 @@ static void _file_based_update_filename(char *outFilename, unsigned int sd_path_
 
 static void _file_based_emmc_finalize(void)
 {
-    if ((emuMMC_ctx.EMMC_Type == emuMMC_SD_File) && fat_mounted)
+    if ((emuMMC_ctx.EMMC_Type == EmummcType_File_Emmc || emuMMC_ctx.EMMC_Type == EmummcType_File_Sd)  && fat_mounted)
     {
         // Close all open handles.
         f_close(&f_emu.fp_boot0);
@@ -106,7 +381,11 @@ static void _file_based_emmc_finalize(void)
             f_close(&f_emu.fp_gpp[i]);
 
         // Force unmount FAT volume.
-        f_mount(NULL, "", 1);
+        if (emuMMC_ctx.EMMC_Type == EmummcType_File_Emmc) {
+            f_mount(NULL, "sys:", 1);
+        } else {
+            f_mount(NULL, "sdmc:", 1);
+        }
 
         fat_mounted = false;
     }
@@ -114,25 +393,37 @@ static void _file_based_emmc_finalize(void)
 
 static void _nand_patrol_ensure_integrity(void)
 {
-    fs_nand_patrol_t nand_patrol;
     static bool nand_patrol_checked = false;
+    fs_nand_patrol_t nand_patrol;
 
     if (!nand_patrol_checked)
     {
-        if (emuMMC_ctx.EMMC_Type == emuMMC_SD_Raw)
+        if (emuMMC_ctx.EMMC_Type == EmummcType_Partition_Emmc || 
+            emuMMC_ctx.EMMC_Type == EmummcType_Partition_Sd   || 
+            emuMMC_ctx.EMMC_Type == EmummcType_None)
         {
-            unsigned int nand_patrol_sector = emuMMC_ctx.EMMC_StoragePartitionOffset + NAND_PATROL_SECTOR;
-            if (!sdmmc_storage_read(&sd_storage, nand_patrol_sector, 1, &nand_patrol))
-                goto out;
+            sdmmc_storage_t *storage = _get_storage_for_device(_get_device_from_type(emuMMC_ctx.EMMC_Type));
 
-            // Clear nand patrol if last offset exceeds storage.
-            if (nand_patrol.offset > sd_storage.sec_cnt)
-            {
-                memset(&nand_patrol, 0, sizeof(fs_nand_patrol_t));
-                sdmmc_storage_write(&sd_storage, nand_patrol_sector, 1, &nand_patrol);
+            unsigned int nand_patrol_sector = emuMMC_ctx.EMMC_StoragePartitionOffset + NAND_PATROL_SECTOR;
+
+            if (emuMMC_ctx.EMMC_Type == EmummcType_None) {
+                // When eMMC redirection disabled, need to access physical BOOT0
+                _ensure_partition(FS_EMMC_PARTITION_BOOT0);
+            } else {
+                _ensure_partition(FS_EMMC_PARTITION_GPP);
             }
+            if (sdmmc_storage_read(storage, nand_patrol_sector, 1, &nand_patrol)){
+                // Clear nand patrol if last offset exceeds storage.
+                if (nand_patrol.offset > storage->sec_cnt)
+                {
+                    memset(&nand_patrol, 0, sizeof(fs_nand_patrol_t));
+                    sdmmc_storage_write(storage, nand_patrol_sector, 1, &nand_patrol);
+                }
+            }
+            _restore_partition();
+            goto out;
         }
-        else if (emuMMC_ctx.EMMC_Type == emuMMC_SD_File && fat_mounted)
+        else if ((emuMMC_ctx.EMMC_Type == EmummcType_File_Sd || emuMMC_ctx.EMMC_Type == EmummcType_File_Emmc) && fat_mounted)
         {
             FIL *fp = &f_emu.fp_boot0;
             if (f_lseek(fp, NAND_PATROL_OFFSET) != FR_OK)
@@ -161,10 +452,24 @@ out:
     }
 }
 
-void sdmmc_finalize(void)
+static void _sdmmc_ensure_initialized(int mmc_id)
 {
-    if (!sdmmc_storage_end(&sd_storage))
+    // int target_device = _get_target_device(mmc_id);
+    // if(target_device == FS_SDMMC_SD)
+        _sdmmc_ensure_initialized_sd();
+    // else if(target_device == FS_SDMMC_EMMC){
+        _sdmmc_ensure_initialized_emmc();
+    // }
+    // Check if nand patrol offset is inside limits.
+    _nand_patrol_ensure_integrity();
+}
+
+void sdmmc_finalize_sd(void)
+{
+    if (!sdmmc_storage_end(&sd_storage)) {
+        DEBUG_LOG("SD end failed");
         fatal_abort(Fatal_InitSD);
+    }
 
     storageSDinitialized = false;
 }
@@ -177,28 +482,50 @@ static void _file_based_emmc_initialize(void)
     memcpy(path, (void *)emuMMC_ctx.storagePath, sizeof(emuMMC_ctx.storagePath));
     strcat(path, "/eMMC/");
     int path_len = strlen(path);
+    int res;
 
     // Open BOOT0 physical partition.
     memcpy(path + path_len, "BOOT0", 6);
-    if (f_open(&f_emu.fp_boot0, path, FA_READ | FA_WRITE) != FR_OK)
+    res = f_open(&f_emu.fp_boot0, path, FA_READ | FA_WRITE);
+    if (res != FR_OK) {
+        DEBUG_LOG_ARGS("Open BOOT0 failed (%d)\n"
+                       "path: %s\n", res, path);
         fatal_abort(Fatal_FatfsFileOpen);
-    if (!f_expand_cltbl(&f_emu.fp_boot0, EMUMMC_FP_CLMT_COUNT, f_emu.clmt_boot0, f_size(&f_emu.fp_boot0)))
+    }
+    if (!f_expand_cltbl(&f_emu.fp_boot0, EMUMMC_FP_CLMT_COUNT, f_emu.clmt_boot0, f_size(&f_emu.fp_boot0))){
+        DEBUG_LOG_ARGS("BOOT0 expand cltbl failed\n"
+                       "path: %s\n", path);
         fatal_abort(Fatal_FatfsMemExhaustion);
+    }
 
     // Open BOOT1 physical partition.
     memcpy(path + path_len, "BOOT1", 6);
-    if (f_open(&f_emu.fp_boot1, path, FA_READ | FA_WRITE) != FR_OK)
+    res = f_open(&f_emu.fp_boot1, path, FA_READ | FA_WRITE);
+    if (res != FR_OK){
+        DEBUG_LOG_ARGS("Open BOOT1 failed (%d)\n"
+                       "path: %s\n", res, path);
         fatal_abort(Fatal_FatfsFileOpen);
-    if (!f_expand_cltbl(&f_emu.fp_boot1, EMUMMC_FP_CLMT_COUNT, f_emu.clmt_boot1, f_size(&f_emu.fp_boot1)))
+    }
+    if (!f_expand_cltbl(&f_emu.fp_boot1, EMUMMC_FP_CLMT_COUNT, f_emu.clmt_boot1, f_size(&f_emu.fp_boot1))) {
+        DEBUG_LOG_ARGS("BOOT1 expand cltbl failed\n"
+                       "path: %s\n", path);
         fatal_abort(Fatal_FatfsMemExhaustion);
+    }
 
     // Open handles for GPP physical partition files.
     _file_based_update_filename(path, path_len, 00);
 
-    if (f_open(&f_emu.fp_gpp[0], path, FA_READ | FA_WRITE) != FR_OK)
+    res = f_open(&f_emu.fp_gpp[0], path, FA_READ | FA_WRITE);
+    if (res != FR_OK){
+        DEBUG_LOG_ARGS("Open GPP failed (%d)\n"
+                       "path: %s\n", res, path);
         fatal_abort(Fatal_FatfsFileOpen);
-    if (!f_expand_cltbl(&f_emu.fp_gpp[0], EMUMMC_FP_CLMT_COUNT, &f_emu.clmt_gpp[0], f_size(&f_emu.fp_gpp[0])))
+    }
+    if (!f_expand_cltbl(&f_emu.fp_gpp[0], EMUMMC_FP_CLMT_COUNT, &f_emu.clmt_gpp[0], f_size(&f_emu.fp_gpp[0]))){
+        DEBUG_LOG_ARGS("GPP expand cltbl failed\n"
+                       "path: %s\n", path);
         fatal_abort(Fatal_FatfsMemExhaustion);
+    }
 
     f_emu.part_size = (uint64_t)f_size(&f_emu.fp_gpp[0]) >> 9;
     f_emu.total_sect = f_emu.part_size;
@@ -208,8 +535,11 @@ static void _file_based_emmc_initialize(void)
     {
         _file_based_update_filename(path, path_len, f_emu.parts);
 
-        if (f_open(&f_emu.fp_gpp[f_emu.parts], path, FA_READ | FA_WRITE) != FR_OK)
+        res = f_open(&f_emu.fp_gpp[f_emu.parts], path, FA_READ | FA_WRITE);
+        if (res != FR_OK)
         {
+            DEBUG_LOG_ARGS("Open GPP failed (%d)\n"
+                           "path: %s\n", res, path);
             // Check if single file.
             if (f_emu.parts == 1)
                 f_emu.parts = 0;
@@ -220,6 +550,8 @@ static void _file_based_emmc_initialize(void)
         if (!f_expand_cltbl(&f_emu.fp_gpp[f_emu.parts], EMUMMC_FP_CLMT_COUNT,
             &f_emu.clmt_gpp[f_emu.parts * EMUMMC_FP_CLMT_COUNT], f_size(&f_emu.fp_gpp[f_emu.parts])))
         {
+            DEBUG_LOG_ARGS("GPP expand cltbl failed\n"
+                           "path: %s\n", path);
             fatal_abort(Fatal_FatfsMemExhaustion);
         }
 
@@ -227,7 +559,7 @@ static void _file_based_emmc_initialize(void)
     }
 }
 
-bool sdmmc_initialize(void)
+bool sdmmc_initialize_sd(void)
 {
     if (!storageSDinitialized)
     {
@@ -239,18 +571,18 @@ bool sdmmc_initialize(void)
                 storageSDinitialized = true;
 
                 // Init file based emummc.
-                if ((emuMMC_ctx.EMMC_Type == emuMMC_SD_File) && !fat_mounted)
+                if ((emuMMC_ctx.EMMC_Type == EmummcType_File_Sd) && !fat_mounted)
                 {
-                    if (f_mount(&f_emu.sd_fs, "", 1) != FR_OK)
+                    int res = f_mount(&f_emu.sd_fs, "sdmc:", 1);
+                    if (res != FR_OK){
+                        DEBUG_LOG_ARGS("SD mount failed (%d)\n", res);
                         fatal_abort(Fatal_InitSD);
-                    else
+                    } else {
                         fat_mounted = true;
+                    }
 
                     _file_based_emmc_initialize();
                 }
-
-                // Check if nand patrol offset is inside limits.
-                _nand_patrol_ensure_integrity();
 
                 break;
             }
@@ -258,11 +590,57 @@ bool sdmmc_initialize(void)
             retries--;
         }
 
-        if (!storageSDinitialized)
+        if (!storageSDinitialized) {
+            DEBUG_LOG("SD initialize failed\n");
             fatal_abort(Fatal_InitSD);
+        }
     }
 
     return storageSDinitialized;
+}
+
+bool sdmmc_initialize_emmc(void)
+{
+    if (!storageEMMCinitialized)
+    {
+        if(nx_emmc_initialize(false))
+        {
+            // if(nx_emmc_set_partition(FS_EMMC_PARTITION_GPP)){
+            if(nx_emmc_set_partition(*active_partition)){
+                storageEMMCinitialized = true;
+
+                if ((emuMMC_ctx.EMMC_Type == EmummcType_File_Emmc) && !fat_mounted) {
+                    int res = f_mount(&f_emu.sd_fs, "sys:", 1);
+                    if (res != FR_OK) {
+                        DEBUG_LOG_ARGS("eMMC mount failed (%d)\n", res);
+                        fatal_abort(Fatal_InitMMC);
+                    } else {
+                        fat_mounted = true;
+                    }
+
+                    _file_based_emmc_initialize();
+                }
+            }
+        }
+    }
+
+    if(!storageEMMCinitialized)
+    {
+        DEBUG_LOG("eMMC initialize failed\n");
+        fatal_abort(Fatal_InitMMC);
+    }
+
+    return storageEMMCinitialized;
+}
+
+void sdmmc_finalize_emmc(void)
+{
+    if(sdmmc_storage_end(&emmc_storage))
+    {
+        DEBUG_LOG("eMMC finalize failed\n");
+        fatal_abort(Fatal_InitMMC);
+    }
+    storageEMMCinitialized = false;
 }
 
 sdmmc_accessor_t *sdmmc_accessor_get(int mmc_id)
@@ -280,26 +658,11 @@ sdmmc_accessor_t *sdmmc_accessor_get(int mmc_id)
         _this = sdmmc_accessor_gc();
         break;
     default:
+        DEBUG_LOG_ARGS("Accessor get failed (%d)\n", mmc_id);
         fatal_abort(Fatal_InvalidAccessor);
     }
 
     return _this;
-}
-
-void mutex_lock_handler(int mmc_id)
-{
-    if (custom_driver)
-        lock_mutex(sd_mutex);
-
-    lock_mutex(nand_mutex);
-}
-
-void mutex_unlock_handler(int mmc_id)
-{
-    unlock_mutex(nand_mutex);
-
-    if (custom_driver)
-        unlock_mutex(sd_mutex);
 }
 
 int sdmmc_nand_get_active_partition_index()
@@ -314,90 +677,162 @@ int sdmmc_nand_get_active_partition_index()
         return 0;
     }
 
+    DEBUG_LOG_ARGS("Get active part failed (%d)\n", *active_partition);
     fatal_abort(Fatal_InvalidAccessor);
 }
 
 static uint64_t emummc_read_write_inner(void *buf, unsigned int sector, unsigned int num_sectors, bool is_write)
 {
-    if (emuMMC_ctx.EMMC_Type == emuMMC_SD_Raw)
+    if (emuMMC_ctx.EMMC_Type == EmummcType_Partition_Sd   ||
+        emuMMC_ctx.EMMC_Type == EmummcType_Partition_Emmc ||
+        emuMMC_ctx.EMMC_Type == EmummcType_None)
     {
-        // raw partition sector offset: emuMMC_ctx.EMMC_StoragePartitionOffset.
-        sector += emuMMC_ctx.EMMC_StoragePartitionOffset;
-        // Set physical partition offset.
-        sector += (sdmmc_nand_get_active_partition_index() * BOOT_PARTITION_SIZE);
+        // change sector only if we redirect emmc
+        if(emuMMC_ctx.EMMC_Type != EmummcType_None){
+            // raw partition sector offset: emuMMC_ctx.EMMC_StoragePartitionOffset.
+            sector += emuMMC_ctx.EMMC_StoragePartitionOffset;
+            // Set physical partition offset
+            sector += (sdmmc_nand_get_active_partition_index() * BOOT_PARTITION_SIZE);
+        }
 
-        if (__builtin_expect(sector + num_sectors > sd_storage.sec_cnt, 0))
+        sdmmc_storage_t *storage = _get_storage_for_device(_get_device_from_type(emuMMC_ctx.EMMC_Type));
+
+        if (__builtin_expect(sector + num_sectors > storage->sec_cnt, 0))
             return 0; // Out of bounds. Can only happen with Nand Patrol if resized.
 
+        _ensure_correct_partition(FS_SDMMC_EMMC);
+
+        uint64_t ret;
         if (!is_write)
-            return sdmmc_storage_read(&sd_storage, sector, num_sectors, buf);
+            ret = sdmmc_storage_read(storage, sector, num_sectors, buf);
         else
-            return sdmmc_storage_write(&sd_storage, sector, num_sectors, buf);
-    }
+            ret = sdmmc_storage_write(storage, sector, num_sectors, buf);
 
-    // File based emummc.
-    FIL *fp = NULL;
-    switch (*active_partition)
-    {
-    case FS_EMMC_PARTITION_GPP:
-        if (f_emu.parts)
+        _restore_partition();
+
+        return ret;
+    }else if(emuMMC_ctx.EMMC_Type == EmummcType_File_Sd || emuMMC_ctx.EMMC_Type == EmummcType_File_Emmc){
+        // File based emummc.
+        uint64_t ret;
+
+        _ensure_correct_partition(FS_SDMMC_EMMC);
+
+        FIL *fp = NULL;
+        switch (*active_partition)
         {
-            if (__builtin_expect(sector + num_sectors > f_emu.total_sect, 0))
-                return 0; // Out of bounds. Can only happen with Nand Patrol if resized.
-
-            fp = &f_emu.fp_gpp[sector / f_emu.part_size];
-            sector = sector % f_emu.part_size;
-
-            // Special handling for reads/writes which cross file-boundaries.
-            if (__builtin_expect(sector + num_sectors > f_emu.part_size, 0))
+        case FS_EMMC_PARTITION_GPP:
+            if (f_emu.parts)
             {
-                unsigned int remaining = num_sectors;
-                while (remaining > 0) {
-                    const unsigned int cur_sectors = MIN(remaining, f_emu.part_size - sector);
-
-                    if (f_lseek(fp, (uint64_t)sector << 9) != FR_OK)
-                        return 0; // Out of bounds.
-
-                    if (!is_write)
-                    {
-                        if (f_read_fast(fp, buf, (uint64_t)cur_sectors << 9) != FR_OK)
-                            return 0;
-                    }
-                    else
-                    {
-                        if (f_write_fast(fp, buf, (uint64_t)cur_sectors << 9) != FR_OK)
-                            return 0;
-                    }
-
-                    buf = (char *)buf + ((uint64_t)cur_sectors << 9);
-                    remaining -= cur_sectors;
-                    sector = 0;
-                    ++fp;
+                if (__builtin_expect(sector + num_sectors > f_emu.total_sect, 0)) {
+                    ret = 0; // Out of bounds. Can only happen with Nand Patrol if resized.
+                    goto out;
                 }
 
-                return 1;
+                fp = &f_emu.fp_gpp[sector / f_emu.part_size];
+                sector = sector % f_emu.part_size;
+
+                // Special handling for reads/writes which cross file-boundaries.
+                if (__builtin_expect(sector + num_sectors > f_emu.part_size, 0))
+                {
+                    unsigned int remaining = num_sectors;
+                    while (remaining > 0) {
+                        const unsigned int cur_sectors = MIN(remaining, f_emu.part_size - sector);
+
+                        if (f_lseek(fp, (uint64_t)sector << 9) != FR_OK){
+                            ret = 0; // Out of bounds.
+                            goto out;
+                        }
+
+                        if (!is_write)
+                        {
+                            if (f_read_fast(fp, buf, (uint64_t)cur_sectors << 9) != FR_OK) {
+                                ret = 0;
+                                goto out;
+                            }
+                        }
+                        else
+                        {
+                            if (f_write_fast(fp, buf, (uint64_t)cur_sectors << 9) != FR_OK) {
+                                ret = 0;
+                                goto out;
+                            }
+                        }
+
+                        buf = (char *)buf + ((uint64_t)cur_sectors << 9);
+                        remaining -= cur_sectors;
+                        sector = 0;
+                        ++fp;
+                    }
+
+                    ret = 1;
+                    goto out;
+                }
+            } else {
+                fp = &f_emu.fp_gpp[0];
             }
+            break;
+
+        case FS_EMMC_PARTITION_BOOT1:
+            fp = &f_emu.fp_boot1;
+            break;
+
+        case FS_EMMC_PARTITION_BOOT0:
+            fp = &f_emu.fp_boot0;
+            break;
         }
+
+
+        if (f_lseek(fp, (uint64_t)sector << 9) != FR_OK) {
+            ret = 0; // Out of bounds. Can only happen with Nand Patrol if resized.
+            goto out;
+        }
+
+        if (!is_write)
+            ret = !f_read_fast(fp, buf, (uint64_t)num_sectors << 9);
         else
-            fp = &f_emu.fp_gpp[0];
-        break;
+            ret = !f_write_fast(fp, buf, (uint64_t)num_sectors << 9);
 
-    case FS_EMMC_PARTITION_BOOT1:
-        fp = &f_emu.fp_boot1;
-        break;
-
-    case FS_EMMC_PARTITION_BOOT0:
-        fp = &f_emu.fp_boot0;
-        break;
+        out:
+        _restore_partition();
+        return ret;
+    } else {
+        DEBUG_LOG_ARGS("Invalid eMMC type (%d)\n", emuMMC_ctx.EMMC_Type);
+        fatal_abort(Fatal_InvalidEnum);
     }
+}
 
-    if (f_lseek(fp, (uint64_t)sector << 9) != FR_OK)
-        return 0; // Out of bounds. Can only happen with Nand Patrol if resized.
+static uint64_t emummc_read_write_sd_inner(void *buf, unsigned int sector, unsigned int num_sectors, bool is_write)
+{
+    if(emuMMC_ctx.SD_Type == EmummcType_Partition_Sd || emuMMC_ctx.SD_Type == EmummcType_Partition_Emmc){
+        sector += emuMMC_ctx.SD_StoragePartitionOffset;
+        sdmmc_storage_t *storage = _get_storage_for_device(_get_device_from_type(emuMMC_ctx.SD_Type));
 
-    if (!is_write)
-        return !f_read_fast(fp, buf, (uint64_t)num_sectors << 9);
-    else
-        return !f_write_fast(fp, buf, (uint64_t)num_sectors << 9);
+        // Out of bounds access check, shouldn't ever happen on SD access
+        if (__builtin_expect(sector + num_sectors > storage->sec_cnt, 0)){
+            DEBUG_LOG_ARGS("OOB SD access sct: 0x%x,\n"
+                           "              cnt: 0x%x,\n"
+                           "              sz:  0x%x\n", 
+                           sector, num_sectors, storage->sec_cnt);
+            fatal_abort(Fatal_OOB);
+        }
+
+        _ensure_correct_partition(FS_SDMMC_SD);
+
+        uint64_t ret;
+        if(!is_write){
+            ret = sdmmc_storage_read(storage, sector, num_sectors, buf);
+        }else{
+            ret = sdmmc_storage_write(storage, sector, num_sectors, buf);
+        }
+
+        _restore_partition();
+
+        return ret;
+    }else{
+        // File based sd redirection not supported currently
+        DEBUG_LOG_ARGS("Invalid emuSD type (%d)\n", emuMMC_ctx.SD_Type);
+        fatal_abort(Fatal_InvalidEnum);
+    }
 }
 
 // Controller open wrapper
@@ -407,21 +842,36 @@ uint64_t sdmmc_wrapper_controller_open(int mmc_id)
     sdmmc_accessor_t *_this;
     _this = sdmmc_accessor_get(mmc_id);
 
+    
     if (_this != NULL)
     {
-        // Lock eMMC xfer while SD card is being initialized by FS.
         if (mmc_id == FS_SDMMC_SD)
-            mutex_lock_handler(FS_SDMMC_EMMC); // Recursive Mutex, handler will lock SD as well if custom_driver
+        {
+            // Lock eMMC while SD is initialized by FS
+            // TODO: Technically only necessary when eMMC is redirected to SD
+            if(custom_driver)
+            {
+                lock_mutex(sd_mutex);
+            }
+            lock_mutex(nand_mutex);
 
-        result = _this->vtab->sdmmc_accessor_controller_open(_this);
+            DEBUG_LOG("Controller open SD\n");
+            result = _this->vtab->sdmmc_accessor_controller_open(_this);
 
-        // Unlock eMMC.
-        if (mmc_id == FS_SDMMC_SD)
-            mutex_unlock_handler(FS_SDMMC_EMMC);
+            unlock_mutex(nand_mutex);
+            if(custom_driver)
+            {
+                unlock_mutex(sd_mutex);
+            }
+        } else {
+            DEBUG_LOG("Controller open other\n");
+            result = _this->vtab->sdmmc_accessor_controller_open(_this);
+        }
 
         return result;
     }
 
+    DEBUG_LOG("Controller open fail (was null)\n");
     fatal_abort(Fatal_OpenAccessor);
 }
 
@@ -434,15 +884,38 @@ uint64_t sdmmc_wrapper_controller_close(int mmc_id)
     if (_this != NULL)
     {
         if (mmc_id == FS_SDMMC_SD)
-            return 0;
+        {
+            DEBUG_LOG("Controller Close SD\n");
+            if(_get_target_device(FS_SDMMC_EMMC) != FS_SDMMC_SD){
+                // eMMC not redirected to SD, can close SD
+                uint64_t ret =_this->vtab->sdmmc_accessor_controller_close(_this);
+                // sdmmc_storage_end(&sd_storage);
+                storageSDinitialized = false;
+                sdmmc_first_init_sd = false;
+                return ret;
+            } else {
+                // eMMC redirected to SD, can't close SD yet
+                DEBUG_LOG("Still in use!\n");
+                return 0;
+            }
+        }
 
         if (mmc_id == FS_SDMMC_EMMC)
         {
             // Close file handles and unmount
+            DEBUG_LOG("Controller Close eMMC\n");
             _file_based_emmc_finalize();
 
-            // Close SD
-            sdmmc_accessor_get(FS_SDMMC_SD)->vtab->sdmmc_accessor_controller_close(sdmmc_accessor_get(FS_SDMMC_SD));
+            if(_get_target_device(FS_SDMMC_EMMC) == FS_SDMMC_SD)
+            {
+                DEBUG_LOG("also close SD\n");
+                // When eMMC redirected to SD, also close SD
+                // Close SD
+                sdmmc_accessor_get(FS_SDMMC_SD)->vtab->sdmmc_accessor_controller_close(sdmmc_accessor_get(FS_SDMMC_SD));
+                // sdmmc_storage_end(&sd_storage);
+                storageSDinitialized = false;
+                sdmmc_first_init_sd = false;
+            }
 
             // Close eMMC
             return _this->vtab->sdmmc_accessor_controller_close(_this);
@@ -451,6 +924,7 @@ uint64_t sdmmc_wrapper_controller_close(int mmc_id)
         return _this->vtab->sdmmc_accessor_controller_close(_this);
     }
 
+    DEBUG_LOG("Controller close fail (was null)\n");
     fatal_abort(Fatal_CloseAccessor);
 }
 
@@ -470,56 +944,53 @@ uint64_t sdmmc_wrapper_read(void *buf, uint64_t bufSize, int mmc_id, unsigned in
             // Assign FS accessor to the SDMMC driver
             _current_accessor = _this;
             // Make sure we're attached to the device address space.
-            _sdmmc_ensure_device_attached();
+            _sdmmc_ensure_device_attached(mmc_id);
             // Make sure we're still initialized if boot killed sd card power.
-            _sdmmc_ensure_initialized();
+            _sdmmc_ensure_initialized(mmc_id);
         }
 
         if (mmc_id == FS_SDMMC_EMMC)
         {
+            // eMMC read
             // Call hekates driver.
-            if (emummc_read_write_inner(buf, sector, num_sectors, false))
-            {
-                mutex_unlock_handler(mmc_id);
-                return 0;
-            }
-
+            uint64_t res = emummc_read_write_inner(buf, sector, num_sectors, false) ? 0 : FS_READ_WRITE_ERROR;
             mutex_unlock_handler(mmc_id);
-            return FS_READ_WRITE_ERROR;
+            return res;
         }
 
         if (mmc_id == FS_SDMMC_SD)
         {
-            static bool first_sd_read = true;
-            if (first_sd_read)
-            {
-                first_sd_read = false;
-                if (emuMMC_ctx.EMMC_Type == emuMMC_SD_Raw)
-                {
-                    // Because some SD cards have issues with emuMMC's driver
-                    // we currently swap to FS's driver after first SD read
-                    // for raw based emuMMC
-                    custom_driver = false;
-                    // FS will handle sd mutex w/o custom driver from here on
-                    unlock_mutex(sd_mutex);
-                }
-            }
+            // SD read
+
+            // TODO: Don't swap to fs driver for now
+            // static bool first_sd_read = true;
+            // if (first_sd_read)
+            // {
+            //     first_sd_read = false;
+
+            //     if (emuMMC_ctx.EMMC_Type == EmummcType_Partition_Sd && false)
+            //     // if (emuMMC_ctx.EMMC_Type == emuMMC_SD_Raw)
+            //     {
+            //         // Because some SD cards have issues with emuMMC's driver
+            //         // we currently swap to FS's driver after first SD read
+            //         // for raw based emuMMC
+            //         custom_driver = false;
+            //         // FS will handle sd mutex w/o custom driver from here on
+            //         unlock_mutex(sd_mutex);
+            //     }
+            // }
 
             // Call hekate's driver.
-            if (sdmmc_storage_read(&sd_storage, sector, num_sectors, buf))
-            {
-                mutex_unlock_handler(mmc_id);
-                return 0;
-            }
-
+            uint64_t res = emummc_read_write_sd_inner(buf, sector, num_sectors, false) ? 0 : FS_READ_WRITE_ERROR;
             mutex_unlock_handler(mmc_id);
-            return FS_READ_WRITE_ERROR;
+            return res;
         }
 
         read_res = _this->vtab->read_write(_this, sector, num_sectors, buf, bufSize, 1);
         return read_res;
     }
 
+    DEBUG_LOG("Read failed (was null)\n");
     fatal_abort(Fatal_ReadNoAccessor);
 }
 
@@ -531,43 +1002,41 @@ uint64_t sdmmc_wrapper_write(int mmc_id, unsigned int sector, unsigned int num_s
 
     _this = sdmmc_accessor_get(mmc_id);
 
+    static u32 cnt = 0;
+
     if (_this != NULL)
     {
         if (mmc_id == FS_SDMMC_EMMC)
         {
+            // eMMC write
             mutex_lock_handler(mmc_id);
             _current_accessor = _this;
 
             // Call hekates driver.
-            if (emummc_read_write_inner(buf, sector, num_sectors, true))
-            {
-                mutex_unlock_handler(mmc_id);
-                return 0;
-            }
-
+            uint64_t res = emummc_read_write_inner(buf, sector, num_sectors, true) ? 0 : FS_READ_WRITE_ERROR;
             mutex_unlock_handler(mmc_id);
-            return FS_READ_WRITE_ERROR;
+            return res;
         }
 
         if (mmc_id == FS_SDMMC_SD)
         {
+            // SD write
             mutex_lock_handler(mmc_id);
             _current_accessor = _this;
 
             // Call hekates driver.
-            if (sdmmc_storage_write(&sd_storage, sector, num_sectors, buf))
-            {
-                mutex_unlock_handler(mmc_id);
-                return 0;
-            }
+            uint64_t res = emummc_read_write_sd_inner(buf, sector, num_sectors, true) ? 0 : FS_READ_WRITE_ERROR;
+
 
             mutex_unlock_handler(mmc_id);
-            return FS_READ_WRITE_ERROR;
+            return res;
         }
+
 
         write_res = _this->vtab->read_write(_this, sector, num_sectors, buf, bufSize, 0);
         return write_res;
     }
 
+    DEBUG_LOG("Write failed (was null)\n");
     fatal_abort(Fatal_WriteNoAccessor);
 }

@@ -10,6 +10,7 @@
 #include <string.h>
 #include "diskio.h"		/* FatFs lower layer API */
 #include "../../emmc/sdmmc.h"
+#include "../../emmc/nx_emmc.h"
 
 extern sdmmc_storage_t sd_storage;
 
@@ -43,7 +44,13 @@ DRESULT disk_read (
 	UINT count		/* Number of sectors to read */
 )
 {
-	return sdmmc_storage_read(&sd_storage, sector, count, buff) ? RES_OK : RES_ERROR;
+	switch(pdrv){
+	case 0:
+		return sdmmc_storage_read(&sd_storage, sector, count, buff) ? RES_OK : RES_ERROR;
+	case 1:
+		return sdmmc_storage_read(&emmc_storage, sector, count, buff) ? RES_OK : RES_ERROR;
+	}
+	return RES_ERROR;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -56,7 +63,13 @@ DRESULT disk_write (
 	UINT count			/* Number of sectors to write */
 )
 {
-	return sdmmc_storage_write(&sd_storage, sector, count, (void *)buff) ? RES_OK : RES_ERROR;
+	switch(pdrv) {
+	case 0:
+		return sdmmc_storage_write(&sd_storage, sector, count, (void *)buff) ? RES_OK : RES_ERROR;
+	case 1:
+		return sdmmc_storage_write(&emmc_storage, sector, count, (void *)buff) ? RES_OK : RES_ERROR;
+	}
+	return RES_ERROR;
 }
 
 /*-----------------------------------------------------------------------*/
