@@ -27,6 +27,7 @@ typedef enum {
     DRIVE_SYS,
     DRIVE_BOOT1,
     DRIVE_BOOT1_OFF,
+    DRIVE_EMUSD,
 } DDRIVE;
 
 

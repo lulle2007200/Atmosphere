@@ -14,6 +14,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <exosphere.hpp>
+#include <exosphere/secmon/secmon_emummc_context.hpp>
 #include <exosphere/secmon/secmon_monitor_context.hpp>
 #include "fusee_key_derivation.hpp"
 #include "fusee_external_package.hpp"
@@ -28,6 +29,7 @@
 #include "fusee_secmon_sync.hpp"
 #include "fusee_stratosphere.hpp"
 #include "fs/fusee_fs_api.hpp"
+#include "fusee_util.hpp"
 
 namespace ams::nxboot {
 
@@ -36,8 +38,6 @@ namespace ams::nxboot {
         constexpr inline const uintptr_t CLKRST  = secmon::MemoryRegionPhysicalDeviceClkRst.GetAddress();
         constexpr inline const uintptr_t PMC     = secmon::MemoryRegionPhysicalDevicePmc.GetAddress();
         constexpr inline const uintptr_t MC      = secmon::MemoryRegionPhysicalDeviceMemoryController.GetAddress();
-
-        constinit secmon::EmummcConfiguration g_emummc_cfg = {};
 
         void DeriveAllKeys(const fuse::SocType soc_type) {
             /* If on erista, run the TSEC keygen firmware. */
@@ -59,65 +59,6 @@ namespace ams::nxboot {
             }
         }
 
-        bool ParseIniSafe(IniSectionList &out_sections, const char *ini_path) {
-            const auto result = ParseIniFile(out_sections, ini_path);
-            if (result == ParseIniResult_Success) {
-                return true;
-            } else if (result == ParseIniResult_NoFile) {
-                return false;
-            } else {
-                ShowFatalError("Failed to parse %s!\n", ini_path);
-            }
-        }
-
-        u32 ParseHexInteger(const char *s) {
-            u32 x = 0;
-            if (s[0] == '0' && s[1] == 'x') {
-                s += 2;
-            }
-
-            while (true) {
-                const char c = *(s++);
-
-                if (c == '\x00') {
-                    return x;
-                } else {
-                    x <<= 4;
-
-                    if ('0' <= c && c <= '9') {
-                        x |= (c - '0');
-                    } else if ('a' <= c && c <= 'f') {
-                        x |= (c - 'a') + 10;
-                    } else if ('A' <= c && c <= 'F') {
-                        x |= (c - 'A') + 10;
-                    }
-                }
-            }
-        }
-
-        u32 ParseDecimalInteger(const char *s) {
-            u32 x = 0;
-            while (true) {
-                const char c = *(s++);
-
-                if (c == '\x00') {
-                    return x;
-                } else {
-                    x *= 10;
-
-                    if ('0' <= c && c <= '9') {
-                        x += c - '0';
-                    }
-                }
-            }
-        }
-
-        bool IsDirectoryExist(const char *path) {
-            fs::DirectoryEntryType entry_type;
-            bool archive;
-            return R_SUCCEEDED(fs::GetEntryType(std::addressof(entry_type), std::addressof(archive), path)) && entry_type == fs::DirectoryEntryType_Directory;
-        }
-
         bool IsFileExist(const char *path) {
             fs::DirectoryEntryType entry_type;
             bool archive;
@@ -126,128 +67,8 @@ namespace ams::nxboot {
 
         bool ConfigureEmummc() {
             /* Set magic. */
-            auto &sd_cfg = g_emummc_cfg.sd_cfg;
-            auto &emmc_cfg = g_emummc_cfg.emmc_cfg;
-
-            emmc_cfg.base_cfg.magic = secmon::EmummcEmmcBaseConfiguration::Magic;
-            sd_cfg.base_cfg.magic   = secmon::EmummcSdBaseConfiguration::Magic;
-
-            bool emummc_driver_enabled = false;
-
-            /* Parse emummc ini. */
-            u32 enabled = 0;
-            u32 id = 0;
-            u32 sector = 0;
-            const char *path = "";
-            const char *n_path = "";
-
-            {
-                IniSectionList sections;
-                if (ParseIniSafe(sections, "emummc/emummc.ini")) {
-                    for (const auto &section : sections){
-                        /* Skip non-emummc sections */
-                        if (std::strcmp(section.name, "emummc")) {
-                            continue;
-                        }
-
-                        for (const auto &entry : section.kv_list) {
-                            if(std::strcmp(entry.key, "enabled") == 0) {
-                                enabled = ParseDecimalInteger(entry.value);
-                            } else if (std::strcmp(entry.key, "id") == 0) {
-                                id = ParseHexInteger(entry.value);
-                            } else if (std::strcmp(entry.key, "sector") == 0) {
-                                sector = ParseHexInteger(entry.value);
-                            } else if (std::strcmp(entry.key, "path") == 0) {
-                                path = entry.value;
-                            } else if (std::strcmp(entry.key, "nintendo_path") == 0) {
-                                n_path = entry.value;
-                            }
-                        }
-                    }
-                }
-            }
-
-            /* Set parsed values to config */
-            constexpr const char *emummc_err_str = "Invalid emummc setting!\n";
-
-            emmc_cfg.base_cfg.id = id;
-            std::strncpy(emmc_cfg.emu_dir_path.str, n_path, sizeof(emmc_cfg.emu_dir_path.str));
-            emmc_cfg.emu_dir_path.str[sizeof(emmc_cfg.emu_dir_path.str) - 1] = '\x00';
-
-            if (enabled == 1) {
-                /* SD based */
-                emummc_driver_enabled = true;
-                if (sector > 0) {
-                    emmc_cfg.base_cfg.type = secmon::EmummcEmmcType::EmummcEmmcType_Partition_Sd;
-                    emmc_cfg.partition_cfg.start_sector = sector;
-                } else if (path[0] != '\x00' && IsDirectoryExist(path)) {
-                    emmc_cfg.base_cfg.type = secmon::EmummcEmmcType::EmummcEmmcType_File_Sd;
-                    std::strncpy(emmc_cfg.file_cfg.path.str, path, sizeof(emmc_cfg.file_cfg.path.str));
-                    emmc_cfg.file_cfg.path.str[sizeof(emmc_cfg.file_cfg.path.str) - 1] = '\x00';
-                } else {
-                    ShowFatalError(emummc_err_str);
-                }
-            } else if (enabled == 4){
-                /* eMMC based */
-                emummc_driver_enabled = true;
-                if (sector > 0) {
-                    emmc_cfg.base_cfg.type = secmon::EmummcEmmcType::EmummcEmmcType_Partition_Emmc;
-                    emmc_cfg.partition_cfg.start_sector = sector;
-                } else if (path[0] != '\x00' /* && IsDirectoryExist(path) */) {
-                    /* TODO: Should check if directory exist on *eMMC* fat partition instead of SD */
-                    emmc_cfg.base_cfg.type = secmon::EmummcEmmcType::EmummcEmmcType_File_Emmc;
-                    std::strncpy(emmc_cfg.file_cfg.path.str, path, sizeof(emmc_cfg.file_cfg.path.str));
-                    emmc_cfg.file_cfg.path.str[sizeof(emmc_cfg.file_cfg.path.str) - 1] = '\x00';
-                } else {
-                    ShowFatalError(emummc_err_str);
-                }
-            } else if (enabled == 0) {
-                emmc_cfg.base_cfg.type = secmon::EmummcEmmcType::EmummcEmmcType_None;
-            } else {
-                ShowFatalError(emummc_err_str);
-            }
-
-            /* Parse emusd ini. */
-            constexpr const char *emusd_err_str = "Invalid emusd setting!\n";
-
-            u32 sd_enabled = 0;
-            u32 sd_sector = 0;
-
-            {
-                IniSectionList sections;
-                if (ParseIniSafe(sections, "emusd/emusd.ini")) {
-                    for (const auto &section : sections){
-                        /* Skip non-emummc sections */
-                        if (std::strcmp(section.name, "emusd")) {
-                            continue;
-                        }
-
-                        for (const auto &entry : section.kv_list) {
-                            if(std::strcmp(entry.key, "enabled") == 0) {
-                                sd_enabled = ParseDecimalInteger(entry.value);
-                            } else if (std::strcmp(entry.key, "sector") == 0) {
-                                sd_sector = ParseHexInteger(entry.value);
-                            }
-                        }
-                    }
-                }
-            }
-
-            /* Set parsed values to config */
-            if (sd_enabled == 4) {
-                emummc_driver_enabled = true;
-                if (sd_sector > 0) {
-                    sd_cfg.partition_cfg.start_sector = sd_sector;
-                    sd_cfg.base_cfg.type = secmon::EmummcSdType::EmummcSdType_Partition_Emmc;
-                } else {
-                    ShowFatalError(emusd_err_str);
-                }
-            } else if (sd_enabled == 0) {
-                sd_cfg.base_cfg.type = secmon::EmummcSdType::EmummcSdType_None;
-            } else {
-                ShowFatalError(emusd_err_str);
-            }
-
+            const secmon::EmummcConfiguration &emummc_cfg = GetEmummcConfig();
+            bool emummc_driver_enabled = emummc_cfg.emmc_cfg.IsActive() || emummc_cfg.sd_cfg.IsActive();
             return emummc_driver_enabled;
         }
 
@@ -563,7 +384,7 @@ namespace ams::nxboot {
             /* Set some defaults. */
             storage_ctx.target_firmware = target_firmware;
             storage_ctx.lcd_vendor      = GetDisplayLcdVendor();
-            storage_ctx.emummc_cfg      = g_emummc_cfg;
+            storage_ctx.emummc_cfg      = GetEmummcConfig();
             storage_ctx.flags[0]        = secmon::SecureMonitorConfigurationFlag_Default;
             storage_ctx.flags[1]        = secmon::SecureMonitorConfigurationFlag_None;
             storage_ctx.log_port        = uart::Port_ReservedDebug;
@@ -793,6 +614,7 @@ namespace ams::nxboot {
 
     void SetupAndStartHorizon() {
         /* Get soc type. */
+
         const auto soc_type = fuse::GetSocType();
 
         /* Derive all keys. */
@@ -800,11 +622,11 @@ namespace ams::nxboot {
 
         /* Determine whether we're using emummc. */
         const bool emummc_driver_enabled = ConfigureEmummc();
-        const bool emummc_enabled = g_emummc_cfg.emmc_cfg.base_cfg.type != secmon::EmummcEmmcType_None;
+        const bool emummc_enabled = GetEmummcConfig().emmc_cfg.IsActive();
 
         /* Initialize emummc. */
         /* NOTE: SYSTEM:/ accessible past this point. */
-        InitializeEmummc(emummc_enabled, g_emummc_cfg.emmc_cfg);
+        InitializeEmummc(emummc_enabled, GetEmummcConfig().emmc_cfg);
 
         /* Read bootloader. */
         const u8 * const package1 = LoadPackage1(soc_type);

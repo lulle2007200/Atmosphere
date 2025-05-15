@@ -63,7 +63,8 @@ DRESULT disk_read (
             return diskio_read_boot1(buff, count * 512, sector, count) ? RES_OK : RES_ERROR;
         case DRIVE_BOOT1_OFF:
             return diskio_read_boot1(buff, count * 512, sector + BOOT1_OFFSET_SCT_1MB, count) ? RES_OK : RES_ERROR;
-
+        case DRIVE_EMUSD:
+            return diskio_read_emusd(buff, count * 512, sector, count) ? RES_OK : RES_ERROR;
         default:
             return RES_PARERR;
     }
@@ -93,6 +94,8 @@ DRESULT disk_write (
             return diskio_write_boot1(sector, count, buff, count * 512) ? RES_OK : RES_ERROR;
         case DRIVE_BOOT1_OFF:
             return diskio_write_boot1(sector + DRIVE_BOOT1_OFF, count, buff, count * 512) ? RES_OK : RES_ERROR;
+        case DRIVE_EMUSD:
+            return diskio_write_emusd(sector, count, buff, count * 512) ? RES_OK : RES_ERROR;
         default:
             return RES_PARERR;
     }

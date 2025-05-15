@@ -14,17 +14,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #pragma once
-#include <vapours.hpp>
+
+#include "fusee_sd_card.hpp"
+#include <exosphere.hpp>
+#include <exosphere/secmon/secmon_emummc_context.hpp>
 
 namespace ams::nxboot {
-
-    Result InitializeSdCard();
-    Result CheckSdCardConnection(sdmmc::SpeedMode *out_sm, sdmmc::BusWidth *out_bw);
-    Result GetSdCardMemoryCapacity(u32 *out_num_sectors);
-
-    Result ReadSdCard(void *dst, size_t size, size_t sector_index, size_t sector_count);
-    Result WriteSdCard(size_t sector_index, size_t sector_count, const void *src, size_t size);
-
-    void FinalizeSdCard();
+    void InitializeEmuSd(const secmon::EmummcSdConfiguration &emusd_cfg);
+    Result ReadEmuSd(void *dst, size_t size, size_t sector_index, size_t sector_count);
+    Result WriteEmuSd(size_t sector_index, size_t sector_count, const void *src, size_t size);
 
 }

@@ -108,6 +108,9 @@ namespace ams::fs {
     bool MountBoot1Off();
     void UnmountBoot1Off();
 
+    bool MountEmuSD();
+    void UnmountEmuSD();
+
     Result ChangeDrive(const char *path);
     Result ChangeDirectory(const char *path);
 

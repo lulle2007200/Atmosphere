@@ -20,6 +20,8 @@ namespace ams::nxboot {
 
     namespace {
 
+        constinit bool g_is_initialized = false;
+
         constexpr inline auto MmcPort = sdmmc::Port_Mmc0;
 
         alignas(0x10) constinit u8 g_mmc_work_buffer[sdmmc::MmcWorkBufferSize];
@@ -40,22 +42,29 @@ namespace ams::nxboot {
     }
 
     void FinalizeMmc() {
-        /* Deactivate MMC. */
-        sdmmc::Deactivate(MmcPort);
+        if (g_is_initialized) {
+            g_is_initialized = false;
+            /* Deactivate MMC. */
+            sdmmc::Deactivate(MmcPort);
 
-        /* Finalize MMC. */
-        sdmmc::Finalize(MmcPort);
+            /* Finalize MMC. */
+            sdmmc::Finalize(MmcPort);
+        }
     }
 
     Result InitializeMmc() {
-        /* Initialize the mmc. */
-        sdmmc::Initialize(MmcPort);
+        if (!g_is_initialized) {
+            /* Initialize the mmc. */
+            sdmmc::Initialize(MmcPort);
+            g_is_initialized = true;
 
-        /* Set the mmc work buffer. */
-        sdmmc::SetMmcWorkBuffer(MmcPort, g_mmc_work_buffer, sizeof(g_mmc_work_buffer));
+            /* Set the mmc work buffer. */
+            sdmmc::SetMmcWorkBuffer(MmcPort, g_mmc_work_buffer, sizeof(g_mmc_work_buffer));
 
-        /* Activate the mmc. */
-        R_RETURN(sdmmc::Activate(MmcPort));
+            /* Activate the mmc. */
+            R_RETURN(sdmmc::Activate(MmcPort));
+        }
+        R_SUCCEED();
     }
 
     Result CheckMmcConnection(sdmmc::SpeedMode *out_sm, sdmmc::BusWidth *out_bw) {

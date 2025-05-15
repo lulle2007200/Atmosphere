@@ -20,6 +20,8 @@ namespace ams::nxboot {
 
     namespace {
 
+        constinit bool g_is_initialized = false;
+
         constexpr inline auto SdCardPort = sdmmc::Port_SdCard0;
 
         constexpr inline const uintptr_t APB = secmon::MemoryRegionPhysicalDeviceApbMisc.GetAddress();
@@ -69,24 +71,32 @@ namespace ams::nxboot {
 
     Result InitializeSdCard() {
         /* Perform initial pinmux config to enable sd card access. */
-        ConfigureInitialSdCardPinmux();
+        if (!g_is_initialized) {
+            ConfigureInitialSdCardPinmux();
 
-        /* Initialize the SD card. */
-        sdmmc::Initialize(SdCardPort);
+            /* Initialize the SD card. */
+            sdmmc::Initialize(SdCardPort);
 
-        /* Set the SD card work buffer. */
-        sdmmc::SetSdCardWorkBuffer(SdCardPort, g_sd_work_buffer, sizeof(g_sd_work_buffer));
+            g_is_initialized = true;
 
-        /* Activate the SD card. */
-        R_RETURN(sdmmc::Activate(SdCardPort));
+            /* Set the SD card work buffer. */
+            sdmmc::SetSdCardWorkBuffer(SdCardPort, g_sd_work_buffer, sizeof(g_sd_work_buffer));
+
+            /* Activate the SD card. */
+            R_RETURN(sdmmc::Activate(SdCardPort));
+        }
+        R_SUCCEED();
     }
 
     void FinalizeSdCard() {
         /* Deactivate the SD card. */
-        sdmmc::Deactivate(SdCardPort);
+        if (g_is_initialized) {
+            g_is_initialized = false;
+            sdmmc::Deactivate(SdCardPort);
+            /* Finalize the SD card. */
+            sdmmc::Finalize(SdCardPort);
+        }
 
-        /* Finalize the SD card. */
-        sdmmc::Finalize(SdCardPort);
     }
 
     Result CheckSdCardConnection(sdmmc::SpeedMode *out_sm, sdmmc::BusWidth *out_bw) {

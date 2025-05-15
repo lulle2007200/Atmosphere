@@ -16,6 +16,9 @@
 #pragma once
 #include <exosphere.hpp>
 #include "fusee_fs_api.hpp"
+#include "../fusee_mmc.hpp"
+#include "../fusee_fatal.hpp"
+#include "../fusee_sd_card.hpp"
 
 namespace ams::fs {
 
@@ -154,5 +157,96 @@ namespace ams::fs {
             virtual Result GetSize(s64 *out_size) override;
             virtual Result SetSize(s64 size) override;
     };
+
+    class SdCardStorage : public fs::IStorage {
+        public:
+            virtual Result Read(s64 offset, void *buffer, size_t size) override {
+                if (!util::IsAligned(offset, sdmmc::SectorSize) || !util::IsAligned(size, sdmmc::SectorSize)) {
+                    nxboot::ShowFatalError("SdCard: unaligned access to %" PRIx64 ", size=%" PRIx64"\n", static_cast<u64>(offset), static_cast<u64>(size));
+                }
+
+                R_RETURN(nxboot::ReadSdCard(buffer, size, offset / sdmmc::SectorSize, size / sdmmc::SectorSize));
+            }
+
+            virtual Result Flush() override {
+                R_SUCCEED();
+            }
+
+            virtual Result GetSize(s64 *out) override {
+                u32 num_sectors;
+                R_TRY(nxboot::GetSdCardMemoryCapacity(std::addressof(num_sectors)));
+
+                *out = static_cast<s64>(num_sectors) * static_cast<s64>(sdmmc::SectorSize);
+                R_SUCCEED();
+            }
+
+            virtual Result Write(s64 offset, const void *buffer, size_t size) override {
+                if (!util::IsAligned(offset, sdmmc::SectorSize) || !util::IsAligned(size, sdmmc::SectorSize)) {
+                    nxboot::ShowFatalError("SdCard: unaligned access to %" PRIx64 ", size=%" PRIx64"\n", static_cast<u64>(offset), static_cast<u64>(size));
+                }
+
+                R_RETURN(nxboot::WriteSdCard(offset / sdmmc::SectorSize, size / sdmmc::SectorSize, buffer, size));
+            }
+
+            virtual Result SetSize(s64 size) override {
+                R_THROW(fs::ResultUnsupportedOperation());
+            }
+    };
+
+    template<sdmmc::MmcPartition Partition>
+    class MmcPartitionStorage : public fs::IStorage {
+        public:
+            constexpr MmcPartitionStorage() { /* ... */ }
+
+            virtual Result Read(s64 offset, void *buffer, size_t size) override {
+                if (!util::IsAligned(offset, sdmmc::SectorSize) || !util::IsAligned(size, sdmmc::SectorSize)) {
+                    nxboot::ShowFatalError("SdCard: unaligned access to %" PRIx64 ", size=%" PRIx64"\n", static_cast<u64>(offset), static_cast<u64>(size));
+                }
+
+                R_RETURN(nxboot::ReadMmc(buffer, size, Partition, offset / sdmmc::SectorSize, size / sdmmc::SectorSize));
+            }
+
+            virtual Result Flush() override {
+                R_SUCCEED();
+            }
+
+            virtual Result GetSize(s64 *out) override {
+                u32 num_sectors;
+                R_TRY(nxboot::GetMmcMemoryCapacity(std::addressof(num_sectors), Partition));
+
+                *out = static_cast<s64>(num_sectors) * static_cast<s64>(sdmmc::SectorSize);
+                R_SUCCEED();
+            }
+
+            virtual Result Write(s64 offset, const void *buffer, size_t size) override {
+                if (!util::IsAligned(offset, sdmmc::SectorSize) || !util::IsAligned(size, sdmmc::SectorSize)) {
+                    nxboot::ShowFatalError("SdCard: unaligned access to %" PRIx64 ", size=%" PRIx64"\n", static_cast<u64>(offset), static_cast<u64>(size));
+                }
+
+                R_RETURN(nxboot::WriteMmc(Partition, offset / sdmmc::SectorSize, size / sdmmc::SectorSize, buffer, size));
+            }
+
+            virtual Result SetSize(s64 size) override {
+                R_THROW(fs::ResultUnsupportedOperation());
+            }
+    };
+
+    class MultiFileStorage : public fs::IStorage {
+            private:
+                s64 m_file_size;
+                fs::FileHandle m_handles[64];
+                bool m_open[64];
+                int m_file_path_ofs;
+                char m_base_path[0x300];
+            private:
+                void EnsureFile(int id);
+            public:
+                MultiFileStorage(const char *base_path);
+                virtual Result Read(s64 offset, void *buffer, size_t size) override;
+                virtual Result Flush() override;
+                virtual Result GetSize(s64 *out) override;
+                virtual Result Write(s64 offset, const void *buffer, size_t size) override;
+                virtual Result SetSize(s64 size) override;
+        };
 
 }

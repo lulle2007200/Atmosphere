@@ -30,10 +30,12 @@ namespace ams::fs {
         constinit bool g_is_sys_mounted       = false;
         constinit bool g_is_boot1_mounted     = false;
         constinit bool g_is_boot1_off_mounted = false;
+        constinit bool g_is_emusd_mounted     = false;
 
         alignas(0x10) constinit FATFS g_sd_fs    = {};
         alignas(0x10) constinit FATFS g_sys_fs   = {};
         alignas(0x10) constinit FATFS g_boot1_fs = {};
+        alignas(0x10) constinit FATFS g_emusd_fs = {};
 
         alignas(0x10) constinit FIL g_files[MaxFiles] = {};
         alignas(0x10) constinit DIR g_dirs[MaxDirectories] = {};
@@ -122,53 +124,75 @@ namespace ams::fs {
 
     }
 
+    bool MountEmuSD() {
+        if(!g_is_emusd_mounted) {
+            g_is_emusd_mounted = f_mount(std::addressof(g_emusd_fs), "emusd:", 1) == FR_OK;
+        }
+        return g_is_emusd_mounted;
+    }
+
+    void UnmountEmuSD () {
+        if(g_is_emusd_mounted) {
+            f_unmount("emusd:");
+        }
+        g_is_emusd_mounted = false;
+    }
+
     bool MountBoot1() {
         /* Can't mount both */
-        AMS_ASSERT(!g_is_boot1_mounted && !g_is_boot1_off_mounted);
-        g_is_boot1_mounted = f_mount(std::addressof(g_boot1_fs), "boot1:", 1) == FR_OK;
+        if (!g_is_boot1_mounted && !g_is_boot1_off_mounted) {
+            g_is_boot1_mounted = f_mount(std::addressof(g_boot1_fs), "boot1:", 1) == FR_OK;
+        }
         return g_is_boot1_mounted;
     }
 
     void UnmountBoot1 () {
-        AMS_ASSERT(g_is_boot1_mounted);
-        f_unmount("boot1:");
+        if (g_is_boot1_mounted) {
+            f_unmount("boot1:");
+        }
         g_is_boot1_mounted = false;
     }
 
     bool MountBoot1Off() {
         /* Can't mount both */
-        AMS_ASSERT(!g_is_boot1_mounted && !g_is_boot1_off_mounted);
-        g_is_boot1_off_mounted = f_mount(std::addressof(g_boot1_fs), "boot1_off:", 1) == FR_OK;
+        if (!g_is_boot1_mounted && !g_is_boot1_off_mounted) {
+            g_is_boot1_off_mounted = f_mount(std::addressof(g_boot1_fs), "boot1_off:", 1) == FR_OK;
+        }
         return g_is_boot1_off_mounted;
     }
 
     void UnmountBoot1Off () {
-        AMS_ASSERT(g_is_boot1_off_mounted);
-        f_unmount("boot1_off:");
+        if (g_is_boot1_off_mounted) {
+            f_unmount("boot1_off:");
+        }
         g_is_boot1_off_mounted = false;
     }
 
     bool MountSys() {
-        AMS_ASSERT(!g_is_sys_mounted);
-        g_is_sys_mounted = f_mount(std::addressof(g_sys_fs), "sys:", 1) == FR_OK;
+        if (!g_is_sys_mounted) {
+            g_is_sys_mounted = f_mount(std::addressof(g_sys_fs), "sys:", 1) == FR_OK;
+        }
         return g_is_sys_mounted;
     }
 
     void UnmountSys() {
-        AMS_ASSERT(g_is_sys_mounted);
-        f_unmount("sys:");
+        if (g_is_sys_mounted) {
+            f_unmount("sys:");
+        }
         g_is_sys_mounted = false;
     }
 
     bool MountSdCard() {
-        AMS_ASSERT(!g_is_sd_mounted);
-        g_is_sd_mounted = f_mount(std::addressof(g_sd_fs), "sdmc:", 1) == FR_OK;
+        if (!g_is_sd_mounted) {
+            g_is_sd_mounted = f_mount(std::addressof(g_sd_fs), "sdmc:", 1) == FR_OK;
+        }
         return g_is_sd_mounted;
     }
 
     void UnmountSdCard() {
-        AMS_ASSERT(g_is_sd_mounted);
-        f_unmount("sdmc:");
+        if (g_is_sd_mounted) {
+            f_unmount("sdmc:");
+        }
         g_is_sd_mounted = false;
     }
 

@@ -499,7 +499,12 @@ namespace ams::sdmmc::impl {
         /* Get the sector index alignment. */
         u32 sector_index_alignment = 0;
         if (!is_read) {
+            #ifdef ATMOSPHERE_IS_EXOSPHERE
+            /* Allow unaligned writes */
+            constexpr u32 MmcWriteSectorAlignment = 0;
+            #else 
             constexpr u32 MmcWriteSectorAlignment = 16_KB / SectorSize;
+            #endif
             sector_index_alignment = MmcWriteSectorAlignment;
             AMS_ABORT_UNLESS(util::IsAligned(sector_index, MmcWriteSectorAlignment));
         }

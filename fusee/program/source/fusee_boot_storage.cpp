@@ -1,10 +1,8 @@
 #include "fusee_boot_storage.hpp"
 #include "fs/fusee_fs_api.hpp"
-#include "fusee_display.hpp"
 #include "fusee_mmc.hpp"
 #include "fusee_sd_card.hpp"
 #include <exosphere.hpp>
-#include <vapours/results/fs_results.hpp>
 
 namespace ams::nxboot {
 	namespace {
@@ -75,7 +73,6 @@ namespace ams::nxboot {
 
 			R_THROW(fs::ResultInvalidMountName());
 		}
-
 	}
 
 	Result MountBootStorage() {

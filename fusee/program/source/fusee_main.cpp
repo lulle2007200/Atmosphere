@@ -16,6 +16,8 @@
 #include <exosphere.hpp>
 #include "fusee_boot_storage.hpp"
 #include "fusee_display.hpp"
+#include "fusee_emummc.hpp"
+#include "fusee_emusd.hpp"
 #include "sein/fusee_secure_initialize.hpp"
 #include "sdram/fusee_sdram.hpp"
 #include "mtc/fusee_mtc.hpp"
@@ -67,6 +69,19 @@ namespace ams::nxboot {
             fs::CloseFile(g_package_file);
         }
 
+        void SwapToEmuSd() {
+            /* Switch to emuSD, if active */
+            if (GetEmummcConfig().sd_cfg.IsActive()) {
+                /* UnmountBootStorage(); */
+                FinalizeBootStorage();
+                InitializeEmuSd(GetEmummcConfig().sd_cfg);
+                fs::ChangeDrive("emusd:");
+                if (!fs::MountEmuSD()) {
+                    ShowFatalError("Failed to mount emuSD");
+                }
+            }
+        }
+
     }
 
     void Main() {
@@ -86,6 +101,12 @@ namespace ams::nxboot {
         if (R_FAILED(MountBootStorage())) {
             ShowFatalError("Failed to mount boot storage.");
         }
+
+        /* Read emuMMC/emuSD config now, need to switch to emuSD, if active, to read AMS files from there */
+        ReadEmummcConfig();
+
+        /* Switch to emuSD, if active */
+        SwapToEmuSd();
 
         /* If we have a fatal error, save and display it. */
         SaveAndShowFatalError();
@@ -117,6 +138,7 @@ namespace ams::nxboot {
 
         /* Restore the memory training overlay. */
         RestoreMemoryTrainingOverlay();
+        
 
         /* Restore memory clock rate. */
         RestoreMemoryClockRate();
@@ -127,8 +149,10 @@ namespace ams::nxboot {
         /* Finalize display. */
         FinalizeDisplay();
 
+        // TODO: proper finalize
         /* Finalize sd card. */
         UnmountBootStorage();
+        fs::UnmountEmuSD();
         FinalizeSdCard();
 
         /* Finalize the data cache. */

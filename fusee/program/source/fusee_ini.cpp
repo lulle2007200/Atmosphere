@@ -15,6 +15,7 @@
  */
 #include <exosphere.hpp>
 #include "fusee_ini.hpp"
+#include "fusee_fatal.hpp"
 #include "fusee_malloc.hpp"
 #include "fs/fusee_fs_api.hpp"
 
@@ -190,7 +191,17 @@ namespace ams::nxboot {
             return ParseIniResult_InvalidFormat;
         }
 
+    }
 
+    bool ParseIniSafe(IniSectionList &out_sections, const char *ini_path) {
+        const auto result = ParseIniFile(out_sections, ini_path);
+        if (result == ParseIniResult_Success) {
+            return true;
+        } else if (result == ParseIniResult_NoFile) {
+            return false;
+        } else {
+            ShowFatalError("Failed to parse %s!\n", ini_path);
+        }
     }
 
 }

@@ -41,5 +41,6 @@ namespace ams::nxboot {
     };
 
     ParseIniResult ParseIniFile(IniSectionList &out_sections, const char *ini_path);
-
+    bool ParseIniSafe(IniSectionList &out_sections, const char *ini_path);
+    
 }

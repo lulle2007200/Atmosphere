@@ -17,6 +17,7 @@
 #include "diskio_cpp.h"
 #include "../fusee_sd_card.hpp"
 #include "../fusee_mmc.hpp"
+#include "../fusee_emusd.hpp"
 
 bool diskio_read_sd_card(void *dst, size_t size, size_t sector_index, size_t sector_count) {
     return R_SUCCEEDED(::ams::nxboot::ReadSdCard(dst, size, sector_index, sector_count));
@@ -42,4 +43,12 @@ bool diskio_read_boot1(void *dst, size_t size, size_t sector_index, size_t secto
 bool diskio_write_boot1(size_t sector_index, size_t sector_count, const void *src, size_t size) {
     /* Don't allow writes to eMMC BOOT1 */
     return false;
+}
+
+bool diskio_read_emusd(void *dst, size_t size, size_t sector_index, size_t sector_count) {
+    return R_SUCCEEDED(::ams::nxboot::ReadEmuSd(dst, size, sector_index, sector_count));
+}
+
+bool diskio_write_emusd(size_t sector_index, size_t sector_count, const void *src, size_t size) {
+    return R_SUCCEEDED(::ams::nxboot::WriteEmuSd(sector_index, sector_count, src, size));
 }

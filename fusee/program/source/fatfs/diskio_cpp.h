@@ -22,6 +22,9 @@ extern "C" {
 bool diskio_read_sd_card(void *dst, size_t size, size_t sector_index, size_t sector_count);
 bool diskio_write_sd_card(size_t sector_index, size_t sector_count, const void *src, size_t size);
 
+bool diskio_read_emusd(void *dst, size_t size, size_t sector_index, size_t sector_count);
+bool diskio_write_emusd(size_t sector_index, size_t sector_count, const void *src, size_t size);
+
 bool diskio_read_system(void *dst, size_t size, size_t sector_index, size_t sector_count);
 bool diskio_write_system(size_t sector_index, size_t sector_count, const void *src, size_t size);
 

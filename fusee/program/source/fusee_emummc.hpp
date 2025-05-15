@@ -15,12 +15,15 @@
  */
 #pragma once
 
-#include <vapours.hpp>
+#include <exosphere.hpp>
 #include <exosphere/secmon/secmon_emummc_context.hpp>
 
 namespace ams::nxboot {
 
     void InitializeEmummc(bool emummc_enabled, const secmon::EmummcEmmcConfiguration &emummc_cfg);
+
+    Result ReadEmummcConfig();
+    const secmon::EmummcConfiguration &GetEmummcConfig();
 
     Result ReadBoot0(s64 offset, void *dst, size_t size);
     Result ReadPackage2(s64 offset, void *dst, size_t size);

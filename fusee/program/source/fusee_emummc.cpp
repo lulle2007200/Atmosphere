@@ -14,167 +14,27 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <exosphere.hpp>
+#include <exosphere/secmon/secmon_emummc_context.hpp>
 #include "fusee_emummc.hpp"
+#include "fusee_ini.hpp"
 #include "fusee_mmc.hpp"
-#include "fusee_sd_card.hpp"
 #include "fusee_fatal.hpp"
 #include "fusee_malloc.hpp"
 #include "fs/fusee_fs_api.hpp"
 #include "fs/fusee_fs_storage.hpp"
+#include "fusee_sd_card.hpp"
+#include "fusee_util.hpp"
 
 namespace ams::nxboot {
 
     namespace {
 
-        class SdCardStorage : public fs::IStorage {
-            public:
-                virtual Result Read(s64 offset, void *buffer, size_t size) override {
-                    if (!util::IsAligned(offset, sdmmc::SectorSize) || !util::IsAligned(size, sdmmc::SectorSize)) {
-                        ShowFatalError("SdCard: unaligned access to %" PRIx64 ", size=%" PRIx64"\n", static_cast<u64>(offset), static_cast<u64>(size));
-                    }
+        using MmcBoot0Storage = fs::MmcPartitionStorage<sdmmc::MmcPartition_BootPartition1>;
+        using MmcUserStorage  = fs::MmcPartitionStorage<sdmmc::MmcPartition_UserData>;
+        using EmummcFileStorage = fs::MultiFileStorage;
 
-                    R_RETURN(ReadSdCard(buffer, size, offset / sdmmc::SectorSize, size / sdmmc::SectorSize));
-                }
-
-                virtual Result Flush() override {
-                    R_SUCCEED();
-                }
-
-                virtual Result GetSize(s64 *out) override {
-                    u32 num_sectors;
-                    R_TRY(GetSdCardMemoryCapacity(std::addressof(num_sectors)));
-
-                    *out = static_cast<s64>(num_sectors) * static_cast<s64>(sdmmc::SectorSize);
-                    R_SUCCEED();
-                }
-
-                virtual Result Write(s64 offset, const void *buffer, size_t size) override {
-                    R_THROW(fs::ResultUnsupportedOperation());
-                }
-
-                virtual Result SetSize(s64 size) override {
-                    R_THROW(fs::ResultUnsupportedOperation());
-                }
-        };
-
-        template<sdmmc::MmcPartition Partition>
-        class MmcPartitionStorage : public fs::IStorage {
-            public:
-                constexpr MmcPartitionStorage() { /* ... */ }
-
-                virtual Result Read(s64 offset, void *buffer, size_t size) override {
-                    if (!util::IsAligned(offset, sdmmc::SectorSize) || !util::IsAligned(size, sdmmc::SectorSize)) {
-                        ShowFatalError("SdCard: unaligned access to %" PRIx64 ", size=%" PRIx64"\n", static_cast<u64>(offset), static_cast<u64>(size));
-                    }
-
-                    R_RETURN(ReadMmc(buffer, size, Partition, offset / sdmmc::SectorSize, size / sdmmc::SectorSize));
-                }
-
-                virtual Result Flush() override {
-                    R_SUCCEED();
-                }
-
-                virtual Result GetSize(s64 *out) override {
-                    u32 num_sectors;
-                    R_TRY(GetMmcMemoryCapacity(std::addressof(num_sectors), Partition));
-
-                    *out = static_cast<s64>(num_sectors) * static_cast<s64>(sdmmc::SectorSize);
-                    R_SUCCEED();
-                }
-
-                virtual Result Write(s64 offset, const void *buffer, size_t size) override {
-                    R_THROW(fs::ResultUnsupportedOperation());
-                }
-
-                virtual Result SetSize(s64 size) override {
-                    R_THROW(fs::ResultUnsupportedOperation());
-                }
-        };
-
-        using MmcBoot0Storage = MmcPartitionStorage<sdmmc::MmcPartition_BootPartition1>;
-        using MmcUserStorage  = MmcPartitionStorage<sdmmc::MmcPartition_UserData>;
-
-        constinit char g_emummc_path[0x300];
-
-        class EmummcFileStorage : public fs::IStorage {
-            private:
-                s64 m_file_size;
-                fs::FileHandle m_handles[64];
-                bool m_open[64];
-                int m_file_path_ofs;
-            private:
-                void EnsureFile(int id) {
-                    if (!m_open[id]) {
-                        /* Update path. */
-                        g_emummc_path[m_file_path_ofs + 1] = '0' + (id % 10);
-                        g_emummc_path[m_file_path_ofs + 0] = '0' + (id / 10);
-
-                        /* Open new file. */
-                        const Result result = fs::OpenFile(m_handles + id, g_emummc_path, fs::OpenMode_Read);
-                        if (R_FAILED(result)) {
-                            ShowFatalError("Failed to open emummc user %02d file: 0x%08" PRIx32 "!\n", id, result.GetValue());
-                        }
-
-                        m_open[id] = true;
-                    }
-                }
-            public:
-                EmummcFileStorage(fs::FileHandle user00, int ofs) : m_file_path_ofs(ofs) {
-                    const Result result = fs::GetFileSize(std::addressof(m_file_size), user00);
-                    if (R_FAILED(result)) {
-                        ShowFatalError("Failed to get emummc file size: 0x%08" PRIx32 "!\n", result.GetValue());
-                    }
-
-                    for (size_t i = 0; i < util::size(m_handles); ++i) {
-                        m_open[i] = false;
-                    }
-
-                    m_handles[0] = user00;
-                    m_open[0]    = true;
-                }
-
-                virtual Result Read(s64 offset, void *buffer, size_t size) override {
-                    int file   = offset / m_file_size;
-                    s64 subofs = offset % m_file_size;
-
-                    u8 *cur_dst = static_cast<u8 *>(buffer);
-
-                    for (/* ... */; size > 0; ++file) {
-                        /* Ensure the current file is open. */
-                        EnsureFile(file);
-
-                        /* Perform the current read. */
-                        const size_t cur_size = std::min<size_t>(m_file_size - subofs, size);
-                        R_TRY(fs::ReadFile(m_handles[file], subofs, cur_dst, cur_size));
-
-                        /* Advance. */
-                        cur_dst += cur_size;
-                        size -= cur_size;
-                        subofs = 0;
-                    }
-
-                    R_SUCCEED();
-                }
-
-                virtual Result Flush() override {
-                    R_THROW(fs::ResultUnsupportedOperation());
-                }
-
-                virtual Result GetSize(s64 *out) override {
-                    R_THROW(fs::ResultUnsupportedOperation());
-                }
-
-                virtual Result Write(s64 offset, const void *buffer, size_t size) override {
-                    R_THROW(fs::ResultUnsupportedOperation());
-                }
-
-                virtual Result SetSize(s64 size) override {
-                    R_THROW(fs::ResultUnsupportedOperation());
-                }
-        };
-
-        constinit SdCardStorage g_sd_card_storage;
-
+        constinit secmon::EmummcConfiguration g_emummc_cfg = {};
+        constinit fs::SdCardStorage g_sd_card_storage;
         constinit MmcBoot0Storage g_mmc_boot0_storage;
         constinit MmcUserStorage g_mmc_user_storage;
 
@@ -231,24 +91,28 @@ namespace ams::nxboot {
             'B', 'C', 'P', 'K', 'G', '2', '-', '1', '-', 'N', 'o', 'r', 'm', 'a', 'l', '-', 'M', 'a', 'i', 'n', 0
         };
 
+        bool IsDirectoryExist(const char *path) {
+            fs::DirectoryEntryType entry_type;
+            bool archive;
+            return R_SUCCEEDED(fs::GetEntryType(std::addressof(entry_type), std::addressof(archive), path)) && entry_type == fs::DirectoryEntryType_Directory;
+        }
+
     }
 
     void InitializeEmummc(bool emummc_enabled, const secmon::EmummcEmmcConfiguration &emummc_cfg) {
         Result result;
         if (emummc_enabled) {
-            /* Get sd card size. */
-            s64 sd_card_size;
-            if (R_FAILED((result = g_sd_card_storage.GetSize(std::addressof(sd_card_size))))) {
-                ShowFatalError("Failed to get sd card size: 0x%08" PRIx32 "!\n", result.GetValue());
-            }
-
             if(emummc_cfg.base_cfg.type == secmon::EmummcEmmcType_Partition_Emmc || emummc_cfg.base_cfg.type == secmon::EmummcEmmcType_Partition_Sd) {
                 /* Partition based emummc */
                 if(emummc_cfg.base_cfg.type == secmon::EmummcEmmcType_Partition_Emmc) {
                     /* When emmc based, init eMMC */
                     if (R_FAILED((result = InitializeMmc()))) {
                         ShowFatalError("Failed to initialize mmc: 0x%08" PRIx32 "\n", result.GetValue());
-                    } 
+                    }
+                } else {
+                    if (R_FAILED((result = InitializeSdCard ()))) {
+                        ShowFatalError("Failed to initialize sd: 0x%08" PRIx32 "\n", result.GetValue());
+                    }
                 }
 
                 /* Get SD or eMMC storage */
@@ -265,6 +129,8 @@ namespace ams::nxboot {
                 g_user_storage = AllocateObject<fs::SubStorage>(storage, partition_start + 8_MB, storage_size - (partition_start + 8_MB));
             } else if (emummc_cfg.base_cfg.type == secmon::EmummcEmmcType_File_Emmc || emummc_cfg.base_cfg.type == secmon::EmummcEmmcType_File_Sd) {
                 /* File based emummc */
+                char path[0x300];
+
                 if(emummc_cfg.base_cfg.type == secmon::EmummcEmmcType_File_Emmc) {
                     /* When emmc based, init eMMC */
                     if (R_FAILED((result = InitializeMmc()))) {
@@ -274,33 +140,43 @@ namespace ams::nxboot {
                     if (!fs::MountSys()) {
                         ShowFatalError("Failed to mount mmc!\n");
                     }
+                } else {
+                    /* When sd based, init sd */
+                    if (R_FAILED((result = InitializeSdCard ()))) {
+                        ShowFatalError("Failed to initialize sd: 0x%08" PRIx32 "\n", result.GetValue());
+                    } 
+
+                    if (!fs::MountSdCard()) {
+                        ShowFatalError("Failed to mount sd!\n");
+                    }
                 }
 
                  /* Set drive to read from */
                 if (emummc_cfg.base_cfg.type == secmon::EmummcEmmcType_File_Sd) {
-                    std::strcpy(g_emummc_path, "sdmc:");
+                    std::strcpy(path, "sdmc:");
                 } else {
-                    std::strcpy(g_emummc_path, "sys:");
+                    std::strcpy(path, "sys:");
                 }
 
-                std::memcpy(g_emummc_path + std::strlen(g_emummc_path), emummc_cfg.file_cfg.path.str, sizeof(emummc_cfg.file_cfg.path.str));
-                std::strcat(g_emummc_path, "/eMMC");
 
-                auto len = std::strlen(g_emummc_path);
+                std::memcpy(path + std::strlen(path), emummc_cfg.file_cfg.path.str, sizeof(emummc_cfg.file_cfg.path.str));
+                std::strcat(path, "/eMMC");
+
+                auto len = std::strlen(path);
 
                 /* Open boot0 file */
                 fs::FileHandle boot0_file;
-                std::strcat(g_emummc_path, "/boot0");
-                if(R_FAILED((result = fs::OpenFile(std::addressof(boot0_file), g_emummc_path, fs::OpenMode_Read)))) {
-                    ShowFatalError("Failed to open emummc boot0 file: 0x%08" PRIx32 " %s!\n", result.GetValue(), g_emummc_path);
+                std::strcat(path, "/boot0");
+                if(R_FAILED((result = fs::OpenFile(std::addressof(boot0_file), path, fs::OpenMode_Read)))) {
+                    ShowFatalError("Failed to open emummc boot0 file: 0x%08" PRIx32 " %s!\n", result.GetValue(), path);
                 }
 
                 /* Check if boot1 file exists */
-                std::strcpy(g_emummc_path + len, "/boot1");
+                std::strcpy(path + len, "/boot1");
                 {
                     fs::DirectoryEntryType entry_type;
                     bool is_archive;
-                    if (R_FAILED((result = fs::GetEntryType(std::addressof(entry_type), std::addressof(is_archive), g_emummc_path)))){
+                    if (R_FAILED((result = fs::GetEntryType(std::addressof(entry_type), std::addressof(is_archive), path)))){
                         ShowFatalError("Failed to find emummc boot1 file: 0x%08" PRIx32 "!\n", result.GetValue());
                     }
 
@@ -310,15 +186,12 @@ namespace ams::nxboot {
                 }
 
                 /* Open userdata */
-                std::strcpy(g_emummc_path + len, "/00");
-                fs::FileHandle user00_file;
-                if(R_FAILED((result = fs::OpenFile(std::addressof(user00_file), g_emummc_path, fs::OpenMode_Read)))) {
-                    ShowFatalError("Failed to open emummc user %02d file: 0x%08" PRIx32 "!\n", 0, result.GetValue());
-                }
+                std::strcpy(path + len, "/");
 
                 /* Create partition */
+                /* TODO: construct boot0 storage from path instead */
                 g_boot0_storage = AllocateObject<fs::FileHandleStorage>(boot0_file);
-                g_user_storage = AllocateObject<EmummcFileStorage>(user00_file, len + 1);
+                g_user_storage  = AllocateObject<EmummcFileStorage>(path);
             } else {
                 ShowFatalError("Unknown emummc type %d\n", static_cast<int>(emummc_cfg.base_cfg.type));
             }
@@ -386,6 +259,132 @@ namespace ams::nxboot {
 
     Result ReadPackage2(s64 offset, void *dst, size_t size) {
         R_RETURN(g_package2_storage->Read(offset, dst, size));
+    }
+
+    Result ReadEmummcConfig() {
+        /* Set magic. */
+        auto &sd_cfg     = g_emummc_cfg.sd_cfg;
+        auto &emmc_cfg = g_emummc_cfg.emmc_cfg;
+
+        emmc_cfg.base_cfg.magic = secmon::EmummcEmmcBaseConfiguration::Magic;
+        sd_cfg.base_cfg.magic   = secmon::EmummcSdBaseConfiguration::Magic;
+
+        /* Parse emummc ini. */
+        u32 enabled = 0;
+        u32 id = 0;
+        u32 sector = 0;
+        const char *path = "";
+        const char *n_path = "";
+
+        {
+            IniSectionList sections;
+            if (ParseIniSafe(sections, "emummc/emummc.ini")) {
+                for (const auto &section : sections){
+                    /* Skip non-emummc sections */
+                    if (std::strcmp(section.name, "emummc")) {
+                        continue;
+                    }
+
+                    for (const auto &entry : section.kv_list) {
+                        if(std::strcmp(entry.key, "enabled") == 0) {
+                            enabled = ParseDecimalInteger(entry.value);
+                        } else if (std::strcmp(entry.key, "id") == 0) {
+                            id = ParseHexInteger(entry.value);
+                        } else if (std::strcmp(entry.key, "sector") == 0) {
+                            sector = ParseHexInteger(entry.value);
+                        } else if (std::strcmp(entry.key, "path") == 0) {
+                            path = entry.value;
+                        } else if (std::strcmp(entry.key, "nintendo_path") == 0) {
+                            n_path = entry.value;
+                        }
+                    }
+                }
+            }
+        }
+
+        /* Set parsed values to config */
+        constexpr const char *emummc_err_str = "Invalid emummc setting!\n";
+
+        emmc_cfg.base_cfg.id = id;
+        std::strncpy(emmc_cfg.emu_dir_path.str, n_path, sizeof(emmc_cfg.emu_dir_path.str));
+        emmc_cfg.emu_dir_path.str[sizeof(emmc_cfg.emu_dir_path.str) - 1] = '\x00';
+
+        if (enabled == 1) {
+            /* SD based */
+            if (sector > 0) {
+                emmc_cfg.base_cfg.type = secmon::EmummcEmmcType::EmummcEmmcType_Partition_Sd;
+                emmc_cfg.partition_cfg.start_sector = sector;
+            } else if (path[0] != '\x00' && IsDirectoryExist(path)) {
+                emmc_cfg.base_cfg.type = secmon::EmummcEmmcType::EmummcEmmcType_File_Sd;
+                std::strncpy(emmc_cfg.file_cfg.path.str, path, sizeof(emmc_cfg.file_cfg.path.str));
+                emmc_cfg.file_cfg.path.str[sizeof(emmc_cfg.file_cfg.path.str) - 1] = '\x00';
+            } else {
+                ShowFatalError(emummc_err_str);
+            }
+        } else if (enabled == 4){
+            /* eMMC based */
+            if (sector > 0) {
+                emmc_cfg.base_cfg.type = secmon::EmummcEmmcType::EmummcEmmcType_Partition_Emmc;
+                emmc_cfg.partition_cfg.start_sector = sector;
+            } else if (path[0] != '\x00' /* && IsDirectoryExist(path) */) {
+                /* TODO: Should check if directory exist on *eMMC* fat partition instead of SD */
+                emmc_cfg.base_cfg.type = secmon::EmummcEmmcType::EmummcEmmcType_File_Emmc;
+                std::strncpy(emmc_cfg.file_cfg.path.str, path, sizeof(emmc_cfg.file_cfg.path.str));
+                emmc_cfg.file_cfg.path.str[sizeof(emmc_cfg.file_cfg.path.str) - 1] = '\x00';
+            } else {
+                ShowFatalError(emummc_err_str);
+            }
+        } else if (enabled == 0) {
+            emmc_cfg.base_cfg.type = secmon::EmummcEmmcType::EmummcEmmcType_None;
+        } else {
+            ShowFatalError(emummc_err_str);
+        }
+
+        /* Parse emusd ini. */
+        constexpr const char *emusd_err_str = "Invalid emusd setting!\n";
+
+        u32 sd_enabled = 0;
+        u32 sd_sector = 0;
+
+        {
+            IniSectionList sections;
+            if (ParseIniSafe(sections, "emusd/emusd.ini")) {
+                for (const auto &section : sections){
+                    /* Skip non-emummc sections */
+                    if (std::strcmp(section.name, "emusd")) {
+                        continue;
+                    }
+
+                    for (const auto &entry : section.kv_list) {
+                        if(std::strcmp(entry.key, "enabled") == 0) {
+                            sd_enabled = ParseDecimalInteger(entry.value);
+                        } else if (std::strcmp(entry.key, "sector") == 0) {
+                            sd_sector = ParseHexInteger(entry.value);
+                        }
+                    }
+                }
+            }
+        }
+
+        /* Set parsed values to config */
+        if (sd_enabled == 4) {
+            if (sd_sector > 0) {
+                sd_cfg.partition_cfg.start_sector = sd_sector;
+                sd_cfg.base_cfg.type = secmon::EmummcSdType::EmummcSdType_Partition_Emmc;
+            } else {
+                ShowFatalError(emusd_err_str);
+            }
+        } else if (sd_enabled == 0) {
+            sd_cfg.base_cfg.type = secmon::EmummcSdType::EmummcSdType_None;
+        } else {
+            ShowFatalError(emusd_err_str);
+        }
+
+        R_SUCCEED();
+    }
+
+    const secmon::EmummcConfiguration &GetEmummcConfig() {
+        return g_emummc_cfg;
     }
 
 }
