@@ -40,6 +40,9 @@ extern "C" {
 #define EMUMMC_FILE_MAX_PARTS 32
 #define EMUMMC_FP_CLMT_COUNT  1024
 
+#define EMUSD_FILE_MAX_PARTS 16
+#define EMUSD_FP_CLMT_COUNT 1024
+
 // FS typedefs
 typedef sdmmc_accessor_t *(*_sdmmc_accessor_gc)();
 typedef sdmmc_accessor_t *(*_sdmmc_accessor_sd)();
@@ -71,7 +74,6 @@ extern _sdmmc_accessor_gc   sdmmc_accessor_gc;
 
 typedef struct _file_based_ctxt
 {
-	FATFS sd_fs;
 	uint64_t parts;
 	uint64_t part_size;
 	FIL fp_boot0;
@@ -82,6 +84,15 @@ typedef struct _file_based_ctxt
 	DWORD clmt_gpp[EMUMMC_FILE_MAX_PARTS * EMUMMC_FP_CLMT_COUNT];
 	uint64_t total_sect;
 } file_based_ctxt;
+
+typedef struct _file_based_sd_ctxt
+{
+	uint64_t parts;
+	uint64_t part_size;
+	FIL fp[EMUSD_FILE_MAX_PARTS];
+	DWORD clmt[EMUSD_FILE_MAX_PARTS][EMUSD_FP_CLMT_COUNT];
+	uint64_t total_sct;
+}file_based_sd_ctxt;
 
 #ifdef __cplusplus
 }

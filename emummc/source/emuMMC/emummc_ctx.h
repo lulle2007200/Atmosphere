@@ -48,6 +48,7 @@ typedef struct _emuMMC_ctx_t
 
     /* File-Based */
     char storagePath[EMUMMC_MAX_DIR_LENGTH + 1];
+    char SD_storagePath[EMUMMC_MAX_DIR_LENGTH + 1];
 } emuMMC_ctx_t, *PemuMMC_ctx_t;
 
 #endif /* __EMUMMC_CTX_H__ */

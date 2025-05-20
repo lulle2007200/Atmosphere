@@ -343,7 +343,6 @@ static void load_emummc_cfg(exo_emummc_mmc_t mmc, exo_emummc_config_t *cfg, exo_
 static bool load_emummc_sd_ctx(void) {
     exo_emummc_config_t config;
     __attribute__((aligned(0x1000))) exo_emummc_paths_t paths;
-    // exo_emummc_paths_t paths;
 
     load_emummc_cfg(EXO_EMUMMC_MMC_SD, &config, &paths);
 
@@ -352,9 +351,17 @@ static bool load_emummc_sd_ctx(void) {
         emuMMC_ctx.SD_Type                   = (enum EmummcType)config.base_cfg.type;
         emuMMC_ctx.fs_ver                    = (enum FS_VER)config.base_cfg.fs_version;
 
-        if(emuMMC_ctx.SD_Type == EmummcType_Partition_Emmc) {
+        if(emuMMC_ctx.SD_Type == EmummcType_Partition_Emmc || emuMMC_ctx.SD_Type == EmummcType_Partition_Sd) {
             emuMMC_ctx.SD_StoragePartitionOffset = config.partition_cfg.start_sector;
-        } else if (emuMMC_ctx.SD_Type == EmummcType_None) {
+        }else if(emuMMC_ctx.SD_Type == EmummcType_File_Sd || emuMMC_ctx.SD_Type == EmummcType_File_Emmc){
+            if(emuMMC_ctx.SD_Type == EmummcType_File_Sd){
+                strcpy((char*)emuMMC_ctx.SD_storagePath, "sdmc:");
+            }else{
+                strcpy((char*)emuMMC_ctx.SD_storagePath, "sys:");
+            }
+            memcpy((char*)emuMMC_ctx.SD_storagePath + strlen((char*)emuMMC_ctx.SD_storagePath), paths.storage_path, sizeof(paths.storage_path));
+            emuMMC_ctx.SD_storagePath[sizeof(emuMMC_ctx.SD_storagePath) - 1] = '\x00';
+        }else if (emuMMC_ctx.SD_Type == EmummcType_None) {
             // SD redirection disabled -> redirect to start of sd
             emuMMC_ctx.SD_Type                   = EmummcType_Partition_Sd;
             emuMMC_ctx.SD_StoragePartitionOffset = 0;
@@ -425,7 +432,7 @@ static bool load_emummc_emmc_ctx(void) {
         return true;
     } else {
         // *Should never happen*
-        // Invalid magid, disable redirection
+        // Invalid magic, disable redirection
         // emuMMC_ctx.magic                       = (u32) -1;
         // emuMMC_ctx.EMMC_Type                   = EmummcType_None;
         // emuMMC_ctx.fs_ver                      = FS_VER_MAX;
