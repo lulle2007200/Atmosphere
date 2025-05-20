@@ -463,6 +463,10 @@ namespace ams::nxboot {
                                 if (entry.value[0] == '1') {
                                     storage_ctx.log_flags |= uart::Flag_Inverted;
                                 }
+                            } else if (std::strcmp(entry.key, "memory_mode_auto") == 0) {
+                                if (entry.value[0] == '1') {
+                                    storage_ctx.memory_mode_auto = 1;
+                                }
                             }
                         }
                     }

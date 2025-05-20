@@ -132,10 +132,13 @@ namespace ams::secmon::smc {
         }
 
         u32 GetMemoryMode() {
-            /* Unless development function is enabled, we're 4 GB. */
+            /* Unless development function is enabled or memory_mode_auto is set, we're 4 GB. */
             u32 memory_mode = pkg1::MemoryMode_4GB;
 
-            if (const auto &bcd = GetBootConfig().data; bcd.IsDevelopmentFunctionEnabled()) {
+            if (GetSecmonConfiguration().IsMemoryModeAuto()) {
+                /* If memory_mode_auto is set, determine memory mode from physical memory */
+                memory_mode = GetMemoryMode(pkg1::MemoryMode_Auto);
+            } else if (const auto &bcd = GetBootConfig().data; bcd.IsDevelopmentFunctionEnabled()) {
                 memory_mode = GetMemoryMode(bcd.GetMemoryMode());
             }
 

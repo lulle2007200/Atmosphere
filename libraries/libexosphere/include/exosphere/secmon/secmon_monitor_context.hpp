@@ -44,7 +44,8 @@ namespace ams::secmon {
         u8  log_port;
         u8  log_flags;
         u32 log_baud_rate;
-        u32 reserved1[2];
+        u8  memory_mode_auto;
+        u8  reserved1[7];
         EmummcConfiguration emummc_cfg;
 
         constexpr bool IsValid() const { return this->magic == Magic; }
@@ -62,18 +63,19 @@ namespace ams::secmon {
         u32 flags[2];
         u16 lcd_vendor;
         u8  log_flags;
-        u8  reserved0;
+        u8  memory_mode_auto;
         u32 log_baud_rate;
         u32 reserved1[(0x80 - 0x1C) / sizeof(u32)];
 
         constexpr void CopyFrom(const SecureMonitorStorageConfiguration &storage) {
-            this->target_firmware = storage.target_firmware;
-            this->flags[0]        = storage.flags[0];
-            this->flags[1]        = storage.flags[1];
-            this->lcd_vendor      = storage.lcd_vendor;
-            this->log_port        = storage.log_port;
-            this->log_flags       = storage.log_flags;
-            this->log_baud_rate   = storage.log_baud_rate != 0 ? storage.log_baud_rate : 115200;
+            this->target_firmware  = storage.target_firmware;
+            this->flags[0]         = storage.flags[0];
+            this->flags[1]         = storage.flags[1];
+            this->lcd_vendor       = storage.lcd_vendor;
+            this->log_port         = storage.log_port;
+            this->log_flags        = storage.log_flags;
+            this->log_baud_rate    = storage.log_baud_rate != 0 ? storage.log_baud_rate : 115200;
+            this->memory_mode_auto = storage.memory_mode_auto;
         }
 
         void SetFuseInfo() {
@@ -95,6 +97,7 @@ namespace ams::secmon {
         constexpr u32 GetLogBaudRate() const { return this->log_baud_rate; }
 
         constexpr bool IsProduction() const { return this->GetHardwareState() != fuse::HardwareState_Development; }
+        constexpr bool IsMemoryModeAuto() const { return (this->memory_mode_auto); }
 
         constexpr bool IsDevelopmentFunctionEnabledForKernel()  const { return (this->flags[0] & SecureMonitorConfigurationFlag_IsDevelopmentFunctionEnabledForKernel)  != 0; }
         constexpr bool IsDevelopmentFunctionEnabledForUser()    const { return (this->flags[0] & SecureMonitorConfigurationFlag_IsDevelopmentFunctionEnabledForUser)    != 0; }
@@ -110,18 +113,18 @@ namespace ams::secmon {
     static_assert(sizeof(SecureMonitorConfiguration) == 0x80);
 
     constexpr inline const SecureMonitorConfiguration DefaultSecureMonitorConfiguration = {
-        .target_firmware = ams::TargetFirmware_Current,
-        .key_generation  = {},
-        .hardware_type   = {},
-        .soc_type        = {},
-        .hardware_state  = {},
-        .log_port        = uart::Port_ReservedDebug,
-        .flags           = { SecureMonitorConfigurationFlag_Default, SecureMonitorConfigurationFlag_None },
-        .lcd_vendor      = {},
-        .log_flags       = {},
-        .reserved0       = {},
-        .log_baud_rate   = 115200,
-        .reserved1       = {},
+        .target_firmware  = ams::TargetFirmware_Current,
+        .key_generation   = {},
+        .hardware_type    = {},
+        .soc_type         = {},
+        .hardware_state   = {},
+        .log_port         = uart::Port_ReservedDebug,
+        .flags            = { SecureMonitorConfigurationFlag_Default, SecureMonitorConfigurationFlag_None },
+        .lcd_vendor       = {},
+        .log_flags        = {},
+        .memory_mode_auto = {},
+        .log_baud_rate    = 115200,
+        .reserved1        = {},
     };
 
 }
