@@ -47,7 +47,10 @@ namespace ams::fs {
             if (R_FAILED(r = fs::OpenFile(std::addressof(m_handles[0]), m_base_path, fs::OpenMode_Read))) {
                 nxboot::ShowFatalError("Failed to open part %02d (%s): 0x%08" PRIx32 "!\n", 0, m_base_path, r.GetValue());
             }
-
+            
+            if (R_FAILED(r = fs::GetFileSize(&m_file_size, m_handles[0]))) {
+                nxboot::ShowFatalError("Failed to get size %02d (%s): 0x%08" PRIx32 "!\n", 0, m_base_path, r.GetValue());
+            }
             m_open[0] = true;
         }
 
