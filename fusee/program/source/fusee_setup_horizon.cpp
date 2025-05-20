@@ -622,7 +622,7 @@ namespace ams::nxboot {
 
         /* Determine whether we're using emummc. */
         const bool emummc_driver_enabled = ConfigureEmummc();
-        const bool emummc_enabled = GetEmummcConfig().emmc_cfg.IsActive();
+        const bool emummc_enabled        = GetEmummcConfig().emmc_cfg.IsActive();
 
         /* Initialize emummc. */
         /* NOTE: SYSTEM:/ accessible past this point. */

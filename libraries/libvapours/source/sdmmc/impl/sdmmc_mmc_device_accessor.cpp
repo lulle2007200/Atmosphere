@@ -498,17 +498,16 @@ namespace ams::sdmmc::impl {
     Result MmcDeviceAccessor::OnReadWrite(u32 sector_index, u32 num_sectors, void *buf, size_t buf_size, bool is_read) {
         /* Get the sector index alignment. */
         u32 sector_index_alignment = 0;
+
+        /* Allow unaligned writes for exosphere/fusee */
+        /* TODO: bad */
+        #ifndef ATMOSPHERE_IS_EXOSPHERE
         if (!is_read) {
-            #ifdef ATMOSPHERE_IS_EXOSPHERE
-            /* Allow unaligned writes */
-            /* TODO: bad */
-            constexpr u32 MmcWriteSectorAlignment = 0;
-            #else 
             constexpr u32 MmcWriteSectorAlignment = 16_KB / SectorSize;
-            #endif
             sector_index_alignment = MmcWriteSectorAlignment;
             AMS_ABORT_UNLESS(util::IsAligned(sector_index, MmcWriteSectorAlignment));
         }
+        #endif
 
         /* Do the read/write. */
         R_RETURN(BaseDeviceAccessor::ReadWriteMultiple(sector_index, num_sectors, sector_index_alignment, buf, buf_size, is_read));

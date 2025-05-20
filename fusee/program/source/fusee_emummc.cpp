@@ -191,7 +191,7 @@ namespace ams::nxboot {
                 /* Create partition */
                 /* TODO: construct boot0 storage from path instead */
                 g_boot0_storage = AllocateObject<fs::FileHandleStorage>(boot0_file);
-                g_user_storage  = AllocateObject<EmummcFileStorage>(path);
+                g_user_storage  = AllocateObject<EmummcFileStorage>(path, fs::OpenMode_Read);
             } else {
                 ShowFatalError("Unknown emummc type %d\n", static_cast<int>(emummc_cfg.base_cfg.type));
             }

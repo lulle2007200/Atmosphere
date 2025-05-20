@@ -117,7 +117,7 @@ namespace ams::nxboot {
                 memcpy(path + strlen(path), "/SD/", 5);
                 path[sizeof(path) - 1] = '\x00';
 
-                g_emusd_storage = AllocateObject<fs::MultiFileStorage>(path);
+                g_emusd_storage = AllocateObject<fs::MultiFileStorage>(path, fs::OpenMode_ReadWrite);
             } else {
                 ShowFatalError("Invalid emuSD config!\n");
             }

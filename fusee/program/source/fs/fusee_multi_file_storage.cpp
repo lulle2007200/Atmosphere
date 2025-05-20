@@ -34,7 +34,7 @@ namespace ams::fs {
             }
         }
 
-        MultiFileStorage::MultiFileStorage(const char *base_path) {
+        MultiFileStorage::MultiFileStorage(const char *base_path, fs::OpenMode mode) {
             util::Strlcpy(m_base_path, base_path, sizeof(m_base_path) - 2);
             m_file_path_ofs = strlen(m_base_path);
 
@@ -44,7 +44,7 @@ namespace ams::fs {
 
             std::memcpy(m_base_path + m_file_path_ofs, "00", 3);
             Result r;
-            if (R_FAILED(r = fs::OpenFile(std::addressof(m_handles[0]), m_base_path, fs::OpenMode_Read))) {
+            if (R_FAILED(r = fs::OpenFile(std::addressof(m_handles[0]), m_base_path, mode))) {
                 nxboot::ShowFatalError("Failed to open part %02d (%s): 0x%08" PRIx32 "!\n", 0, m_base_path, r.GetValue());
             }
             

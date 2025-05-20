@@ -241,7 +241,7 @@ namespace ams::fs {
             private:
                 void EnsureFile(int id);
             public:
-                MultiFileStorage(const char *base_path);
+                MultiFileStorage(const char *base_path, OpenMode mode);
                 virtual Result Read(s64 offset, void *buffer, size_t size) override;
                 virtual Result Flush() override;
                 virtual Result GetSize(s64 *out) override;
