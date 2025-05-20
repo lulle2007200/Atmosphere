@@ -19,6 +19,7 @@
 #include "fusee_malloc.hpp"
 #include "fusee_mmc.hpp"
 #include <exosphere.hpp>
+#include <exosphere/secmon/secmon_emummc_context.hpp>
 
 namespace ams::nxboot {
 
@@ -46,18 +47,25 @@ namespace ams::nxboot {
 
     void InitializeEmuSd(const secmon::EmummcSdConfiguration &emusd_cfg) {
         if (emusd_cfg.IsActive()) {
-            if (emusd_cfg.base_cfg.type == secmon::EmummcSdType_Partition_Emmc) {
+            if (emusd_cfg.base_cfg.type == secmon::EmummcSdType_Partition_Emmc || emusd_cfg.base_cfg.type == secmon::EmummcSdType_Partition_Sd) {
+                /* Partition based */
                 Result r;
-                if (R_FAILED(r = InitializeMmc())) {
-                    ShowFatalError("Failed to initializeMmc: %" PRIx32 "!\n", r.GetValue());
+                if (emusd_cfg.base_cfg.type == secmon::EmummcSdType_Partition_Sd) {
+                    if (R_FAILED(r = InitializeSdCard())) {
+                        ShowFatalError("Failed to initialize SD Card: %" PRIx32 "!\n", r.GetValue());
+                    }
+                    g_emusd_base_storage = AllocateObject<fs::SdCardStorage>();
+                } else {
+                    if (R_FAILED(r = InitializeMmc())) {
+                        ShowFatalError("Failed to initialize eMMC: %" PRIx32 "!\n", r.GetValue());
+                    }
+                    g_emusd_base_storage = AllocateObject<fs::MmcPartitionStorage<sdmmc::MmcPartition_UserData>>();
                 }
-
-                g_emusd_base_storage = AllocateObject<fs::MmcPartitionStorage<sdmmc::MmcPartition_UserData>>();
 
                 /* Get base storage size */
                 s64 size;
                 if(R_FAILED(g_emusd_base_storage->GetSize(std::addressof(size)))) {
-                    ShowFatalError("Failed to get eMMC size!");
+                    ShowFatalError("Failed to get size!");
                 }
 
                 /* Read emuSD size from mbr */
@@ -76,8 +84,43 @@ namespace ams::nxboot {
                 }
 
                 g_emusd_storage = AllocateObject<fs::SubStorage>(*g_emusd_base_storage, offset, emusd_size);
+            } else if(emusd_cfg.base_cfg.type == secmon::EmummcSdType_File_Emmc || emusd_cfg.base_cfg.type == secmon::EmummcSdType_File_Sd) {
+                /* File based */
+                Result r;
+                if(emusd_cfg.base_cfg.type == secmon::EmummcSdType_File_Emmc) {
+                    /* When emmc based, init eMMC */
+                    if (R_FAILED((r = InitializeMmc()))) {
+                        ShowFatalError("Failed to initialize mmc: 0x%08" PRIx32 "\n", r.GetValue());
+                    } 
+
+                    if (!fs::MountSys()) {
+                        ShowFatalError("Failed to mount mmc!\n");
+                    }
+                } else {
+                    /* When sd based, init sd */
+                    if (R_FAILED((r = InitializeSdCard ()))) {
+                        ShowFatalError("Failed to initialize sd: 0x%08" PRIx32 "\n", r.GetValue());
+                    } 
+
+                    if (!fs::MountSdCard()) {
+                        ShowFatalError("Failed to mount sd!\n");
+                    }
+                }
+
+                char path[0xa0];
+                if (emusd_cfg.base_cfg.type == secmon::EmummcSdType_File_Emmc) {
+                    memcpy(path, "sys:", 5);
+                } else {
+                    memcpy(path, "sdmc:", 6);
+                }
+                memcpy(path + strlen(path), emusd_cfg.file_cfg.path.str, sizeof(emusd_cfg.file_cfg.path.str));
+                memcpy(path + strlen(path), "/SD/", 5);
+                path[sizeof(path) - 1] = '\x00';
+
+                g_emusd_storage = AllocateObject<fs::MultiFileStorage>(path);
+            } else {
+                ShowFatalError("Invalid emuSD config!\n");
             }
-        /* TODO: support other emusd types */
         } else {
             const Result r = InitializeSdCard();
             if (R_FAILED(r)) {

@@ -345,6 +345,7 @@ namespace ams::nxboot {
 
         u32 sd_enabled = 0;
         u32 sd_sector = 0;
+        const char *sd_path = "";
 
         {
             IniSectionList sections;
@@ -360,17 +361,36 @@ namespace ams::nxboot {
                             sd_enabled = ParseDecimalInteger(entry.value);
                         } else if (std::strcmp(entry.key, "sector") == 0) {
                             sd_sector = ParseHexInteger(entry.value);
+                        } else if (std::strcmp(entry.key, "path") ==0) {
+                            sd_path = entry.value;
                         }
                     }
                 }
             }
         }
 
-        /* Set parsed values to config */
-        if (sd_enabled == 4) {
+        if (sd_enabled == 1) {
+            /* SD based */
             if (sd_sector > 0) {
+                sd_cfg.base_cfg.type = secmon::EmummcSdType::EmummcSdType_Partition_Sd;
                 sd_cfg.partition_cfg.start_sector = sd_sector;
+            } else if (sd_path[0] != '\x00' && IsDirectoryExist(sd_path)) {
+                sd_cfg.base_cfg.type = secmon::EmummcSdType::EmummcSdType_File_Sd;
+                std::strncpy(sd_cfg.file_cfg.path.str, sd_path, sizeof(sd_cfg.file_cfg.path.str));
+                sd_cfg.file_cfg.path.str[sizeof(sd_cfg.file_cfg.path.str) - 1] = '\x00';
+            } else {
+                ShowFatalError(emusd_err_str);
+            }
+        } else if (sd_enabled == 4){
+            /* eMMC based */
+            if (sd_sector > 0) {
                 sd_cfg.base_cfg.type = secmon::EmummcSdType::EmummcSdType_Partition_Emmc;
+                sd_cfg.partition_cfg.start_sector = sd_sector;
+            } else if (sd_path[0] != '\x00' /* && IsDirectoryExist(path) */) {
+                /* TODO: Should check if directory exist on *eMMC* fat partition instead of SD */
+                sd_cfg.base_cfg.type = secmon::EmummcSdType::EmummcSdType_File_Emmc;
+                std::strncpy(sd_cfg.file_cfg.path.str, sd_path, sizeof(sd_cfg.file_cfg.path.str));
+                sd_cfg.file_cfg.path.str[sizeof(sd_cfg.file_cfg.path.str) - 1] = '\x00';
             } else {
                 ShowFatalError(emusd_err_str);
             }

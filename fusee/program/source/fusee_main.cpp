@@ -75,9 +75,9 @@ namespace ams::nxboot {
                 /* UnmountBootStorage(); */
                 FinalizeBootStorage();
                 InitializeEmuSd(GetEmummcConfig().sd_cfg);
-                fs::ChangeDrive("emusd:");
+                Result r = fs::ChangeDrive("emusd:");
                 if (!fs::MountEmuSD()) {
-                    ShowFatalError("Failed to mount emuSD");
+                    ShowFatalError("Failed to mount emuSD 0x%" PRIx32 "\n", r.GetValue());
                 }
             }
         }
