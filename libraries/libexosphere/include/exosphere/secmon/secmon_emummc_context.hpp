@@ -29,10 +29,9 @@ namespace ams::secmon {
     enum EmummcSdType : u32 {
         EmummcSdType_None           = 0,
         EmummcSdType_Partition_Emmc = 3,
-        // Not (currently) supported
-        // EmummcSdType_Partition_Sd   = 1,
-        // EmummcSdType_File_Sd        = 2,
-        // EmummcSdType_File_Emmc      = 4,
+        EmummcSdType_Partition_Sd   = 1,
+        EmummcSdType_File_Sd        = 2,
+        EmummcSdType_File_Emmc      = 4,
     };
 
     enum EmummcMmc {
@@ -121,8 +120,7 @@ namespace ams::secmon {
         EmummcSdBaseConfiguration base_cfg;
         union {
             EmummcPartitionConfiguration partition_cfg;
-            /* File based currently not supported */
-            /* EmummcFileConfiguration file_cfg */
+            EmummcFileConfiguration file_cfg;
         };
 
         constexpr bool IsValid() const {
@@ -134,7 +132,7 @@ namespace ams::secmon {
         }
     };
     static_assert(util::is_pod<EmummcSdConfiguration>::value);
-    static_assert(sizeof(EmummcSdConfiguration) == 0x18);
+    static_assert(sizeof(EmummcSdConfiguration) == 0x90);
 
     struct EmummcConfiguration {
         EmummcEmmcConfiguration emmc_cfg;

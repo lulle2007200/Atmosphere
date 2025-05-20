@@ -20,7 +20,6 @@
 #include <exosphere/secmon/secmon_monitor_context.hpp>
 
 namespace ams::secmon {
-
     struct ConfigurationContext {
         union {
             SecureMonitorConfiguration secmon_cfg;
@@ -28,7 +27,7 @@ namespace ams::secmon {
         };
         union {
             EmummcConfiguration emummc_cfg;
-            u8 _raw_emummc_config[0x128];
+            u8 _raw_emummc_config[0x1A0];
         };
         u8 sealed_device_keys[pkg1::KeyGeneration_Max][se::AesBlockSize];
         u8 sealed_master_keys[pkg1::KeyGeneration_Max][se::AesBlockSize];

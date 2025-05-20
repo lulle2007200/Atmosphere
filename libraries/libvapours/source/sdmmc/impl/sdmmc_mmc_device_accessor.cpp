@@ -501,6 +501,7 @@ namespace ams::sdmmc::impl {
         if (!is_read) {
             #ifdef ATMOSPHERE_IS_EXOSPHERE
             /* Allow unaligned writes */
+            /* TODO: bad */
             constexpr u32 MmcWriteSectorAlignment = 0;
             #else 
             constexpr u32 MmcWriteSectorAlignment = 16_KB / SectorSize;

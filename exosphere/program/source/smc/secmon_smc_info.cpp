@@ -440,7 +440,6 @@ namespace ams::secmon::smc {
         const uintptr_t user_offset  = user_address % 4_KB;
 
         /* Validate arguments. */
-        /* NOTE: Only eMMC and SD redirection supported. GC redirection may be supported in the future */
         SMC_R_UNLESS(mmc == EmummcMmc_Nand || mmc == EmummcMmc_Sd,                              NotSupported);
         SMC_R_UNLESS(mmc != EmummcMmc_Nand || user_offset + 2 * sizeof(EmummcFilePath) <= 4_KB, InvalidArgument);
 
@@ -489,14 +488,24 @@ namespace ams::secmon::smc {
             static_assert(sizeof(cfg.base_cfg) <= InlineOutputSize);
             std::memcpy(inline_output, std::addressof(cfg.base_cfg), sizeof(cfg.base_cfg));
 
+            AtmosphereUserPageMapper mapper(user_address);
+            SMC_R_UNLESS(mapper.Map(), InvalidArgument);
+
             switch(cfg.base_cfg.type) {
                 case EmummcSdType_None:
+                    /* Nothing to be copied if disabled */
                     break;
                 case EmummcSdType_Partition_Emmc:
+                case EmummcSdType_Partition_Sd:
+                    /* Copy partition config */
                     static_assert(sizeof(cfg.base_cfg) + sizeof(cfg.partition_cfg) <= InlineOutputSize);
                     std::memcpy(inline_output + sizeof(cfg.base_cfg), std::addressof(cfg.partition_cfg), sizeof(cfg.partition_cfg));
                     break;
-                /* File based and SD partition based (currently) not supported for SD redirection */
+                case EmummcSdType_File_Emmc:
+                case EmummcSdType_File_Sd:
+                    /* Copy file config */
+                    SMC_R_UNLESS(mapper.CopyToUser(user_address, std::addressof(cfg.file_cfg), sizeof(cfg.file_cfg)), InvalidArgument);
+                    break;
                 AMS_UNREACHABLE_DEFAULT_CASE();
             }
         }
