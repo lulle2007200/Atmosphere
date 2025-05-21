@@ -472,7 +472,7 @@ static void _sdmmc_ensure_initialized_sd(void)
     // when sd is closed and file based emusd enabled, file based will be finalized
     // but sd might not be deinitialized. if sd is opened again, need to 
     // initialize file based again, even if sd wasnt deinitialized
-    if(!file_based_sd_initialized){
+    if(!file_based_sd_initialized && (emuMMC_ctx.SD_Type == EmummcType_File_Sd || emuMMC_ctx.SD_Type == EmummcType_File_Emmc)){
         _file_based_sd_initialize();
     }
 }
