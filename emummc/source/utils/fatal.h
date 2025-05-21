@@ -38,6 +38,7 @@ enum FatalReason
     Fatal_InvalidEnum,
     Fatal_InvalidPartition,
     Fatal_PartitionSwitchFail,
+    Fatal_FatfsSync,
     Fatal_OOB,
     Fatal_Max
 };
