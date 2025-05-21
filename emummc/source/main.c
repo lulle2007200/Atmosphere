@@ -467,12 +467,15 @@ static void load_emummc_ctx(void)
     }
 
     DEBUG_LOG("Final config:\n");
-    DEBUG_LOG_ARGS("SD:   en: %d, off: 0x%x\n", 
-                   emuMMC_ctx.SD_Type, emuMMC_ctx.SD_StoragePartitionOffset);
+    DEBUG_LOG_ARGS("SD:   en: %d, off: 0x%x\n"
+                   "      path: %s\n", 
+                   emuMMC_ctx.SD_Type, emuMMC_ctx.SD_StoragePartitionOffset,
+                   emuMMC_ctx.SD_storagePath);
     DEBUG_LOG_ARGS("EMMC: en: %d, off: 0x%x\n"
                    "      path: %s\n"
                    "      npath: %s\n", 
                    emuMMC_ctx.EMMC_Type, emuMMC_ctx.EMMC_StoragePartitionOffset, emuMMC_ctx.storagePath, nintendo_path);
+    DEBUG_LOG_ARGS("FS version: %d\n", emuMMC_ctx.fs_ver);
 }
 
 void setup_nintendo_paths(void)
