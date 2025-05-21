@@ -78,7 +78,7 @@ static void _mount_emmc(bool mount){
     }else{
         count--;
         if(count < 0){
-            DEBUG_LOG_ARGS("EMMC unmount before mount\n");
+            DEBUG_LOG("EMMC unmount before mount\n");
             fatal_abort(Fatal_FatfsMount);
         }
         if(count == 0){
@@ -103,7 +103,7 @@ static void _mount_sd(bool mount){
     }else{
         count--;
         if(count < 0){
-            DEBUG_LOG_ARGS("SD unmount before mount\n");
+            DEBUG_LOG("SD unmount before mount\n");
             fatal_abort(Fatal_FatfsMount);
         }
         if(count == 0){
