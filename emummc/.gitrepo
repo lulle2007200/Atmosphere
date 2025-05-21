@@ -5,8 +5,8 @@
 ;
 [subrepo]
 	remote = https://github.com/lulle2007200/emuMMC.git
-	branch = develop
-	commit = 2fc47cbb89f69be89111e84c99e845650308adc9
-	parent = 69926c459c410a389cdedb1fbae2a4c8a6bcce42
+	branch = internal-emummc
+	commit = a12c41ae7687385dde279879ba1f4f16db168947
+	parent = ae849ca64213ad738dfab145cf7e1cae6af65519
 	method = merge
 	cmdver = 0.4.9
