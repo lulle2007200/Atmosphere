@@ -4,7 +4,7 @@
 ; git-subrepo command. See https://github.com/git-commands/git-subrepo#readme
 ;
 [subrepo]
-	remote = https://github.com/lulle2007200/emuMMC.git
+	remote = git@github.com:lulle2007200/emuMMC.git
 	branch = internal-emummc
 	commit = a12c41ae7687385dde279879ba1f4f16db168947
 	parent = ae849ca64213ad738dfab145cf7e1cae6af65519
