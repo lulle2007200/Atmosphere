@@ -398,6 +398,21 @@ static void _file_based_update_filename(char *outFilename, unsigned int sd_path_
     snprintf(outFilename + sd_path_len, 3, "%02d", part_idx);
 }
 
+static void _file_based_sd_flush()
+{
+    if((emuMMC_ctx.SD_Type == EmummcType_File_Emmc || emuMMC_ctx.SD_Type == EmummcType_File_Sd) && file_based_sd_initialized){
+        int i = 0;
+        do{
+            int res = f_sync(&f_emu_sd.fp[i]);
+            if(res != FR_OK){
+                DEBUG_LOG_ARGS("fsync failed (err: %d, part: %d)", res, i);
+                fatal_abort(Fatal_FatfsSync);
+            }
+            i++;
+        }while(i < f_emu_sd.parts);
+    }
+}
+
 static void _file_based_sd_initialize(void)
 {
     if(emuMMC_ctx.SD_Type == EmummcType_File_Emmc) {
@@ -1100,7 +1115,10 @@ uint64_t sdmmc_wrapper_controller_close(int mmc_id)
         if (mmc_id == FS_SDMMC_SD)
         {
             DEBUG_LOG("Controller Close SD\n");
-            _file_based_sd_finalize();
+            // Deinitializing/initializing file based emuSD every time SD is opened/closed
+            // takes a long time. Instead, keep the files open and flush when SD is closed.
+            // Will be finalized when eMMC is finalized
+            _file_based_sd_flush();
             if(_get_target_device(FS_SDMMC_EMMC) != FS_SDMMC_SD){
                 // eMMC not redirected to SD, can close SD
                 uint64_t ret =_this->vtab->sdmmc_accessor_controller_close(_this);
@@ -1120,6 +1138,8 @@ uint64_t sdmmc_wrapper_controller_close(int mmc_id)
             // Close file handles and unmount
             DEBUG_LOG("Controller Close eMMC\n");
             _file_based_emmc_finalize();
+
+            _file_based_sd_finalize();
 
             if(_get_target_device(FS_SDMMC_EMMC) == FS_SDMMC_SD)
             {
