@@ -65,6 +65,7 @@ FATFS emmc_fs;
 static void _mount_emmc(bool mount){
     static int count = 0;
 
+    DEBUG_LOG_ARGS("mount EMMC mount: %d, count: %d", mount, count);
     if(mount){
         if(count == 0){
             // not mounted yet, mount emmc
@@ -90,6 +91,7 @@ static void _mount_emmc(bool mount){
 static void _mount_sd(bool mount){
     static int count = 0;
 
+    DEBUG_LOG_ARGS("mount SD mount: %d, count: %d", mount, count);
     if(mount){
         if(count == 0){
             // not mounted yet, mount sd
@@ -398,6 +400,12 @@ static void _file_based_update_filename(char *outFilename, unsigned int sd_path_
 
 static void _file_based_sd_initialize(void)
 {
+    if(emuMMC_ctx.SD_Type == EmummcType_File_Emmc) {
+        _mount_emmc(true);
+    }else if(emuMMC_ctx.SD_Type == EmummcType_File_Sd){
+        _mount_sd(true);
+    }
+
     char path[sizeof(emuMMC_ctx.SD_storagePath) + 0x20];
     memset(&path, 0, sizeof(path));
 
@@ -467,13 +475,6 @@ static void _sdmmc_ensure_initialized_sd(void)
                 init_done = true;
             }
         }
-    }
-
-    // when sd is closed and file based emusd enabled, file based will be finalized
-    // but sd might not be deinitialized. if sd is opened again, need to 
-    // initialize file based again, even if sd wasnt deinitialized
-    if(!file_based_sd_initialized && (emuMMC_ctx.SD_Type == EmummcType_File_Sd || emuMMC_ctx.SD_Type == EmummcType_File_Emmc)){
-        _file_based_sd_initialize();
     }
 }
 
@@ -592,6 +593,14 @@ static void _sdmmc_ensure_initialized(int mmc_id)
     }
     // Check if nand patrol offset is inside limits.
     _nand_patrol_ensure_integrity();
+
+    if(mmc_id == FS_SDMMC_SD) {
+        // When SD is closed, file based emuSD is deinitialized, but SD may not be deinitialized if still used for eMMC
+        // Make sure, file based emuSD is initialized before accessing
+        if(!file_based_sd_initialized && (emuMMC_ctx.SD_Type == EmummcType_File_Sd || emuMMC_ctx.SD_Type == EmummcType_File_Emmc)){
+            _file_based_sd_initialize();
+        }
+    }
 }
 
 void sdmmc_finalize_sd(void)
@@ -606,6 +615,12 @@ void sdmmc_finalize_sd(void)
 
 static void _file_based_emmc_initialize(void)
 {
+    if(emuMMC_ctx.EMMC_Type == EmummcType_File_Emmc) {
+        _mount_emmc(true);
+    }else if (emuMMC_ctx.EMMC_Type == EmummcType_File_Sd) {
+        _mount_sd(true);
+    }
+
     char path[sizeof(emuMMC_ctx.storagePath) + 0x20];
     memset(&path, 0, sizeof(path));
 
@@ -705,8 +720,6 @@ bool sdmmc_initialize_sd(void)
                 // Init file based emummc.
                 if (emuMMC_ctx.EMMC_Type == EmummcType_File_Sd || emuMMC_ctx.SD_Type == EmummcType_File_Sd)
                 {
-                    _mount_sd(true);
-
                     if(emuMMC_ctx.EMMC_Type == EmummcType_File_Sd && !file_based_emmc_initialized){
                         _file_based_emmc_initialize();
                     }
@@ -741,8 +754,6 @@ bool sdmmc_initialize_emmc(void)
                 storageEMMCinitialized = true;
 
                 if ((emuMMC_ctx.EMMC_Type == EmummcType_File_Emmc || emuMMC_ctx.SD_Type == EmummcType_File_Emmc)) {
-                    _mount_emmc(true);
-
                     if(emuMMC_ctx.EMMC_Type == EmummcType_File_Emmc && !file_based_emmc_initialized){
                         _file_based_emmc_initialize();
                     }
@@ -1063,8 +1074,11 @@ uint64_t sdmmc_wrapper_controller_open(int mmc_id)
             {
                 unlock_mutex(sd_mutex);
             }
+        } else if (mmc_id == FS_SDMMC_EMMC) {
+            DEBUG_LOG("Controller open EMMC\n");
+            result = _this->vtab->sdmmc_accessor_controller_open(_this);
         } else {
-            DEBUG_LOG("Controller open other\n");
+            DEBUG_LOG("Controller open GC\n");
             result = _this->vtab->sdmmc_accessor_controller_open(_this);
         }
 
