@@ -460,9 +460,9 @@ static void load_emummc_ctx(void)
         fatal_abort(Fatal_GetConfig);
     }
 
-    if(fs_ver != (u32) -1 && fs_ver != emuMMC_ctx.fs_ver) {
+    if(fs_ver != (u32) FS_VER_MAX && fs_ver != emuMMC_ctx.fs_ver) {
         // SD and eMMC configs have different fs versions
-        DEBUG_LOG("fs version mismatch\n");
+        DEBUG_LOG_ARGS("fs version mismatch (sd: %d, emmc: %d)\n", fs_ver, emuMMC_ctx.fs_ver);
         fatal_abort(Fatal_GetConfig);
     }
 
