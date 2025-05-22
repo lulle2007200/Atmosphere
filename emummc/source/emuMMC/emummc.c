@@ -1114,11 +1114,25 @@ uint64_t sdmmc_wrapper_controller_close(int mmc_id)
     {
         if (mmc_id == FS_SDMMC_SD)
         {
-            DEBUG_LOG("Controller Close SD\n");
+
+            if(custom_driver)
+            {
+                lock_mutex(sd_mutex);
+            }
+            lock_mutex(nand_mutex);
+
             // Deinitializing/initializing file based emuSD every time SD is opened/closed
             // takes a long time. Instead, keep the files open and flush when SD is closed.
             // Will be finalized when eMMC is finalized
             _file_based_sd_flush();
+
+            unlock_mutex(nand_mutex);
+            if(custom_driver)
+            {
+                unlock_mutex(sd_mutex);
+            }
+
+            DEBUG_LOG("Controller Close SD\n");
             if(_get_target_device(FS_SDMMC_EMMC) != FS_SDMMC_SD){
                 // eMMC not redirected to SD, can close SD
                 uint64_t ret =_this->vtab->sdmmc_accessor_controller_close(_this);
@@ -1138,7 +1152,6 @@ uint64_t sdmmc_wrapper_controller_close(int mmc_id)
             // Close file handles and unmount
             DEBUG_LOG("Controller Close eMMC\n");
             _file_based_emmc_finalize();
-
             _file_based_sd_finalize();
 
             if(_get_target_device(FS_SDMMC_EMMC) == FS_SDMMC_SD)

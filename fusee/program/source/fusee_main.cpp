@@ -88,8 +88,8 @@ namespace ams::nxboot {
                 if (R_FAILED(r = InitializeSdCard())) {
                     ShowFatalError("Failed to init SD card (0x%" PRIx32 ")!\n", r.GetValue());
                 }
-                if (R_FAILED(r = fs::MountSdCard())) {
-                    ShowFatalError("Failed to mount SD card (0x%" PRIx32 ")!\n", r.GetValue());
+                if (!fs::MountSdCard()) {
+                    ShowFatalError("Failed to mount SD card!\n");
                 }
                 if (R_FAILED(r = fs::ChangeDrive("sdmc:"))) {
                     ShowFatalError("Failed to change drive (0x%" PRIx32 ")!\n", r.GetValue());
