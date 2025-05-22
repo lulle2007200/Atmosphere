@@ -6,7 +6,7 @@
 [subrepo]
 	remote = git@github.com:lulle2007200/emuMMC.git
 	branch = internal-emummc
-	commit = bd802597ea7035f9e0b481346b9dae06a8fbbece
-	parent = 42943c467e7a55e7239642e8c5ee90019a5830e3
+	commit = 93cea03888217966223422f41fcdb3665e989ac4
+	parent = 8c11b287ff10862d74cd80f33715e44c4429b617
 	method = merge
 	cmdver = 0.4.9
