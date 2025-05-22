@@ -160,13 +160,13 @@ namespace ams::nxboot {
 
 
                 std::memcpy(path + std::strlen(path), emummc_cfg.file_cfg.path.str, sizeof(emummc_cfg.file_cfg.path.str));
-                std::strcat(path, "/eMMC");
+                strcat(path, "/eMMC");
 
                 auto len = std::strlen(path);
 
                 /* Open boot0 file */
                 fs::FileHandle boot0_file;
-                std::strcat(path, "/boot0");
+                strcat(path, "/boot0");
                 if(R_FAILED((result = fs::OpenFile(std::addressof(boot0_file), path, fs::OpenMode_Read)))) {
                     ShowFatalError("Failed to open emummc boot0 file: 0x%08" PRIx32 " %s!\n", result.GetValue(), path);
                 }
@@ -186,7 +186,7 @@ namespace ams::nxboot {
                 }
 
                 /* Open userdata */
-                std::strcpy(path + len, "/");
+                std::memcpy(path + len, "/", 2);
 
                 /* Create partition */
                 /* TODO: construct boot0 storage from path instead */
