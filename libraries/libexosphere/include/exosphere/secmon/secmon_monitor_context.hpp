@@ -97,7 +97,7 @@ namespace ams::secmon {
         constexpr u32 GetLogBaudRate() const { return this->log_baud_rate; }
 
         constexpr bool IsProduction() const { return this->GetHardwareState() != fuse::HardwareState_Development; }
-        constexpr bool IsMemoryModeAuto() const { return (this->memory_mode_auto); }
+        constexpr bool IsMemoryModeAuto() const { return (this->memory_mode_auto) != 0; }
 
         constexpr bool IsDevelopmentFunctionEnabledForKernel()  const { return (this->flags[0] & SecureMonitorConfigurationFlag_IsDevelopmentFunctionEnabledForKernel)  != 0; }
         constexpr bool IsDevelopmentFunctionEnabledForUser()    const { return (this->flags[0] & SecureMonitorConfigurationFlag_IsDevelopmentFunctionEnabledForUser)    != 0; }

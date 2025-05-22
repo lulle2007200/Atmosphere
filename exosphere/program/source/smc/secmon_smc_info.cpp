@@ -141,7 +141,6 @@ namespace ams::secmon::smc {
             } else if (const auto &bcd = GetBootConfig().data; bcd.IsDevelopmentFunctionEnabled()) {
                 memory_mode = GetMemoryMode(bcd.GetMemoryMode());
             }
-
             return memory_mode;
         }
 
@@ -155,6 +154,11 @@ namespace ams::secmon::smc {
                 value.Set<KernelConfiguration::Flags1>(bcd.GetKernelFlags1());
                 value.Set<KernelConfiguration::Flags0>(bcd.GetKernelFlags0());
             }
+
+            if (GetSecmonConfiguration().IsMemoryModeAuto()) {
+                memory_size = pkg1::GetMemorySize(GetMemoryMode(pkg1::MemoryMode_Auto));
+            }
+
 
             value.Set<KernelConfiguration::PhysicalMemorySize>(memory_size);
 
