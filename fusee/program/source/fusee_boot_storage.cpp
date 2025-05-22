@@ -2,6 +2,7 @@
 #include "fs/fusee_fs_api.hpp"
 #include "fusee_mmc.hpp"
 #include "fusee_sd_card.hpp"
+#include "fusee_util.hpp"
 #include <exosphere.hpp>
 
 namespace ams::nxboot {
@@ -27,9 +28,8 @@ namespace ams::nxboot {
 			case BootDrive_Boot1Off:
 				{
 					R_TRY(InitializeMmc());
-					ON_RESULT_FAILURE { FinalizeMmc(); };
 					R_UNLESS(fs::MountBoot1Off(), fs::ResultInvalidMountName());
-					ON_RESULT_FAILURE_2 { fs::UnmountBoot1Off(); };
+					ON_RESULT_FAILURE { fs::UnmountBoot1Off(); };
 					R_TRY(fs::ChangeDrive("boot1_off:"));
 					R_TRY(IsBootStorageValid());
 					g_boot_storage = storage;
@@ -38,9 +38,8 @@ namespace ams::nxboot {
 			case BootDrive_Boot1:
 				{
 					R_TRY(InitializeMmc());
-					ON_RESULT_FAILURE { FinalizeMmc(); };
 					R_UNLESS(fs::MountBoot1(), fs::ResultInvalidMountName());
-					ON_RESULT_FAILURE_2 { fs::UnmountBoot1(); };
+					ON_RESULT_FAILURE { fs::UnmountBoot1(); };
 					R_TRY(fs::ChangeDrive("boot1:"));
 					R_TRY(IsBootStorageValid());
 					g_boot_storage = storage;
@@ -49,6 +48,7 @@ namespace ams::nxboot {
 			case BootDrive_System:
 				{
 					R_TRY(InitializeMmc());
+					/* Only finalize mmc now, next drive to try is SD card */
 					ON_RESULT_FAILURE { FinalizeMmc(); };
 					R_UNLESS(fs::MountSys(), fs::ResultInvalidMountName());
 					ON_RESULT_FAILURE_2 { fs::UnmountSys(); };
