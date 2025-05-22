@@ -49,6 +49,8 @@ namespace ams::nxboot {
 
             /* Finalize MMC. */
             sdmmc::Finalize(MmcPort);
+
+            g_mmc_partition = sdmmc::MmcPartition_Unknown;
         }
     }
 
