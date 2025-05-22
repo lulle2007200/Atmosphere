@@ -401,6 +401,7 @@ static void _file_based_update_filename(char *outFilename, unsigned int sd_path_
 static void _file_based_sd_flush()
 {
     if((emuMMC_ctx.SD_Type == EmummcType_File_Emmc || emuMMC_ctx.SD_Type == EmummcType_File_Sd) && file_based_sd_initialized){
+        _ensure_correct_partition(FS_SDMMC_SD);
         int i = 0;
         do{
             int res = f_sync(&f_emu_sd.fp[i]);
@@ -410,11 +411,14 @@ static void _file_based_sd_flush()
             }
             i++;
         }while(i < f_emu_sd.parts);
+        _restore_partition();
     }
 }
 
 static void _file_based_sd_initialize(void)
 {
+    _ensure_correct_partition(FS_SDMMC_SD);
+
     if(emuMMC_ctx.SD_Type == EmummcType_File_Emmc) {
         _mount_emmc(true);
     }else if(emuMMC_ctx.SD_Type == EmummcType_File_Sd){
@@ -467,6 +471,8 @@ static void _file_based_sd_initialize(void)
     }
 
     file_based_sd_initialized = true;
+
+    _restore_partition();
 }
 
 static void _sdmmc_ensure_initialized_sd(void)
@@ -502,6 +508,7 @@ static void _file_based_emmc_finalize(void)
 {
     if ((emuMMC_ctx.EMMC_Type == EmummcType_File_Emmc || emuMMC_ctx.EMMC_Type == EmummcType_File_Sd)  && file_based_emmc_initialized)
     {
+        _ensure_correct_partition(FS_SDMMC_EMMC);
         // Close all open handles.
         f_close(&f_emu.fp_boot0);
         f_close(&f_emu.fp_boot1);
@@ -517,12 +524,14 @@ static void _file_based_emmc_finalize(void)
         }
 
         file_based_emmc_initialized = false;
+        _restore_partition();
     }
 }
 
 static void _file_based_sd_finalize(void)
 {
     if((emuMMC_ctx.SD_Type == EmummcType_File_Emmc || emuMMC_ctx.SD_Type == EmummcType_File_Sd) && file_based_sd_initialized){
+        _ensure_correct_partition(FS_SDMMC_SD);
         for(int i = 0; i < f_emu_sd.parts; i++){
             f_close(&f_emu_sd.fp[i]);
         }
@@ -534,6 +543,7 @@ static void _file_based_sd_finalize(void)
         }
 
         file_based_sd_initialized = false;
+        _restore_partition();
     }
 }
 
@@ -630,6 +640,8 @@ void sdmmc_finalize_sd(void)
 
 static void _file_based_emmc_initialize(void)
 {
+    _ensure_correct_partition(FS_SDMMC_EMMC);
+
     if(emuMMC_ctx.EMMC_Type == EmummcType_File_Emmc) {
         _mount_emmc(true);
     }else if (emuMMC_ctx.EMMC_Type == EmummcType_File_Sd) {
@@ -719,6 +731,8 @@ static void _file_based_emmc_initialize(void)
     }
 
     file_based_emmc_initialized = true;
+
+    _restore_partition();
 }
 
 bool sdmmc_initialize_sd(void)
