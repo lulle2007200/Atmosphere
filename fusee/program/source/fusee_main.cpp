@@ -79,6 +79,21 @@ namespace ams::nxboot {
                 if (!fs::MountEmuSD()) {
                     ShowFatalError("Failed to mount emuSD 0x%" PRIx32 "\n", r.GetValue());
                 }
+            } else {
+                if (GetBootStorage() != BootStorage::BootDrive_SD) {
+                    FinalizeBootStorage();
+                }
+
+                Result r;
+                if (R_FAILED(r = InitializeSdCard())) {
+                    ShowFatalError("Failed to init SD card (0x%" PRIx32 ")!\n", r.GetValue());
+                }
+                if (R_FAILED(r = fs::MountSdCard())) {
+                    ShowFatalError("Failed to mount SD card (0x%" PRIx32 ")!\n", r.GetValue());
+                }
+                if (R_FAILED(r = fs::ChangeDrive("sdmc:"))) {
+                    ShowFatalError("Failed to change drive (0x%" PRIx32 ")!\n", r.GetValue());
+                }
             }
         }
 
