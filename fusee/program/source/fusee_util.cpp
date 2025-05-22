@@ -18,45 +18,44 @@
 namespace ams::nxboot {
 
     u32 ParseHexInteger(const char *s) {
-            u32 x = 0;
-            if (s[0] == '0' && s[1] == 'x') {
-                s += 2;
-            }
+        u32 x = 0;
+        if (s[0] == '0' && s[1] == 'x') {
+            s += 2;
+        }
 
-            while (true) {
-                const char c = *(s++);
+        while (true) {
+            const char c = *(s++);
 
-                if (c == '\x00') {
-                    return x;
-                } else {
-                    x <<= 4;
+            if (c == '\x00') {
+                return x;
+            } else {
+                x <<= 4;
 
-                    if ('0' <= c && c <= '9') {
-                        x |= (c - '0');
-                    } else if ('a' <= c && c <= 'f') {
-                        x |= (c - 'a') + 10;
-                    } else if ('A' <= c && c <= 'F') {
-                        x |= (c - 'A') + 10;
-                    }
+                if ('0' <= c && c <= '9') {
+                    x |= (c - '0');
+                } else if ('a' <= c && c <= 'f') {
+                    x |= (c - 'a') + 10;
+                } else if ('A' <= c && c <= 'F') {
+                    x |= (c - 'A') + 10;
                 }
             }
         }
+    }
 
-        u32 ParseDecimalInteger(const char *s) {
-            u32 x = 0;
-            while (true) {
-                const char c = *(s++);
+    u32 ParseDecimalInteger(const char *s) {
+        u32 x = 0;
+        while (true) {
+            const char c = *(s++);
 
-                if (c == '\x00') {
-                    return x;
-                } else {
-                    x *= 10;
+            if (c == '\x00') {
+                return x;
+            } else {
+                x *= 10;
 
-                    if ('0' <= c && c <= '9') {
-                        x += c - '0';
-                    }
+                if ('0' <= c && c <= '9') {
+                    x += c - '0';
                 }
             }
         }
-
+    }
 }
